@@ -3,7 +3,8 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 3
-  tags: []
+  tags:
+  - LittleGirl
   layers:
   - Default
   - TransparentFX
@@ -14,7 +15,7 @@ TagManager:
   - floor
   - walls
   - toilet
-  - 
+  - Colliders
   - 
   - 
   - 
