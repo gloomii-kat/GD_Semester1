@@ -1,4 +1,4 @@
-using UnityEngine;
+ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 
@@ -58,6 +58,11 @@ public class LightFlicker : MonoBehaviour
     {
         isScaring = true;
         isOnCooldown = true;
+
+        // Hide interaction text when cooldown starts
+        if (playerInRange && interactionText != null)
+            interactionText.gameObject.SetActive(false);
+
         bool originalState = isYellowActive;
 
         for (int i = 0; i < flickerCount; i++)
@@ -87,6 +92,10 @@ public class LightFlicker : MonoBehaviour
         // Cooldown period begins after flicker completes
         yield return new WaitForSeconds(cooldownDuration);
         isOnCooldown = false;
+
+        // Show interaction text again after cooldown if player is still in range
+        if (playerInRange && interactionText != null)
+            interactionText.gameObject.SetActive(true);
     }
 
     void UpdateLightVisuals()
@@ -102,7 +111,8 @@ public class LightFlicker : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerInRange = true;
-            if (interactionText != null)
+            // Only show interaction text if not on cooldown
+            if (interactionText != null && !isOnCooldown)
                 interactionText.gameObject.SetActive(true);
         }
     }

@@ -1,17 +1,20 @@
 using UnityEngine;
+using UnityEngine.UI;
+using System.Collections;
 
 public class BasinScare : MonoBehaviour
 {
     public GameObject BasinText;       // "Press E" prompt
     public AudioSource scareAudio;      // Scare sound
     public AwarenessScript awarenessScript; // Reference to the AwarenessBar
+    public CooldownTimer_bar cooldownBar; // Reference to the cooldown timer bar
 
     private bool playerInRange = false;
     private bool littleGirlInRange = false;
-
-
+    private bool isOnCooldown = false;  // Track if cooldown is active
 
     public int scareAmount = 10; // Amount to increase awareness by
+    public int cooldownDuration = 5; // Cooldown duration in seconds
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -20,21 +23,34 @@ public class BasinScare : MonoBehaviour
         if (BasinText != null)
         {
             BasinText.SetActive(false);
-            Debug.Log("Toilet text initialized to false");
+            Debug.Log("Basin text initialized to false");
         }
         else
         {
-            Debug.LogError("Toilet Text is not assigned in the inspector!");
+            Debug.LogError("Basin Text is not assigned in the inspector!");
+        }
+
+        // Initialize cooldown bar
+        if (cooldownBar != null)
+        {
+            cooldownBar.Duration = cooldownDuration;
+            // Make sure the cooldown bar is initially hidden
+            cooldownBar.gameObject.SetActive(false);
+            Debug.Log("Cooldown bar initialized");
+        }
+        else
+        {
+            Debug.LogError("Cooldown Bar is not assigned in the inspector!");
         }
 
         // Initialize awareness to 0 if needed
         if (awarenessScript != null)
         {
-            // Set max value (assuming you want max awareness to be 100)
+            // Set max value
             awarenessScript.SetMaxAwareness(150);
             // Set starting value to 0
             awarenessScript.SetAwareness(0);
-            Debug.Log("Awareness initialized to 0, max set to 100");
+            Debug.Log("Awareness initialized to 0, max set to 150");
         }
         else
         {
@@ -52,36 +68,82 @@ public class BasinScare : MonoBehaviour
     {
         bool bothInRange = playerInRange && littleGirlInRange;
 
-        // Only show prompt if both are in the trigger
+        // Only show prompt if both are in range AND not on cooldown
         if (BasinText != null)
         {
-            BasinText.SetActive(bothInRange);
+            BasinText.SetActive(bothInRange && !isOnCooldown);
 
             // Debug log when text state changes
-            if (bothInRange)
+            if (bothInRange && !isOnCooldown)
             {
-                Debug.Log("Both in range - showing text");
+                Debug.Log("Both in range, not on cooldown - showing press E text");
+            }
+            else if (bothInRange && isOnCooldown)
+            {
+                Debug.Log("Both in range but on cooldown - hiding press E text");
             }
         }
 
-        // Player presses E while both are in trigger
-        if (bothInRange && Input.GetKeyDown(KeyCode.E))
+        // Player presses E while both are in trigger AND not on cooldown
+        if (bothInRange && !isOnCooldown && Input.GetKeyDown(KeyCode.E))
         {
-            ScareHerAss(scareAmount);
-            Debug.Log("E pressed - Scare triggered! Awareness +" + scareAmount);
-
-            if (scareAudio != null)
-            {
-                scareAudio.Play();
-                Debug.Log("Playing scare sound");
-            }
-            else
-            {
-                Debug.LogError("Cannot play sound - AudioSource is null!");
-            }
-
-           
+            StartScare();
         }
+    }
+
+    void StartScare()
+    {
+        Debug.Log("StartScare() called - Starting cooldown");
+
+        // Set cooldown
+        isOnCooldown = true;
+
+        // Show and start cooldown bar
+        if (cooldownBar != null)
+        {
+            cooldownBar.gameObject.SetActive(true);
+            cooldownBar.StartCooldown(cooldownDuration);
+            Debug.Log("Cooldown bar activated and started for " + cooldownDuration + " seconds");
+        }
+        else
+        {
+            Debug.LogError("cooldownBar is NULL in StartScare!");
+        }
+
+        // Increase awareness
+        ScareHerAss(scareAmount);
+        Debug.Log("E pressed - Scare triggered! Awareness +" + scareAmount);
+
+        // Play sound
+        if (scareAudio != null)
+        {
+            scareAudio.Play();
+            Debug.Log("Playing scare sound");
+        }
+        else
+        {
+            Debug.LogError("Cannot play sound - AudioSource is null!");
+        }
+
+        // Start cooldown routine
+        StartCoroutine(CooldownRoutine());
+    }
+
+    System.Collections.IEnumerator CooldownRoutine()
+    {
+        // Wait for cooldown duration
+        yield return new WaitForSeconds(cooldownDuration);
+
+        // End cooldown
+        isOnCooldown = false;
+
+        // Hide cooldown bar
+        if (cooldownBar != null)
+        {
+            cooldownBar.gameObject.SetActive(false);
+        }
+
+        Debug.Log("Cooldown ended - E press available again");
     }
 
     void ScareHerAss(int amount)
@@ -147,7 +209,8 @@ public class BasinScare : MonoBehaviour
     void OnDrawGizmos()
     {
         // Draw a small sphere to show trigger status
-        Gizmos.color = (playerInRange && littleGirlInRange) ? Color.blue : Color.orange;
+        Gizmos.color = (playerInRange && littleGirlInRange && !isOnCooldown) ? Color.green :
+                       (playerInRange && littleGirlInRange && isOnCooldown) ? Color.yellow : Color.red;
         Gizmos.DrawSphere(transform.position + Vector3.up, 0.3f);
     }
 }
