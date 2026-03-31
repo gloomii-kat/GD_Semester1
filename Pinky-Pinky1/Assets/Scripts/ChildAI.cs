@@ -13,16 +13,8 @@ public class ChildAI : MonoBehaviour
     public Transform[] toiletStalls; // Assign toilet stall positions in inspector
     public Transform[] bathroomPoints; // Random points in bathroom to run to when scared
 
-    [Header("Screaming Behavior")]
-    public float screamDuration = 5f;
-    public float runSpeedMultiplier = 2f;
-
     [Header("Idle Behavior")]
     public float idleTimeAtStalls = 3f; // Time to wait at each stall
-
-    [Header("Audio")]
-    public AudioSource audioSource;
-    public AudioClip screamSound;
 
     private Path path;
     private int currentWaypoint = 0;
@@ -31,14 +23,19 @@ public class ChildAI : MonoBehaviour
     private Seeker seeker;
     private Rigidbody2D rb;
 
-    private bool isScreaming = false;
-    private float screamTimer = 0f;
     private float originalSpeed;
 
     // New variables for idle behavior
     private bool isIdle = false;
     private float idleTimer = 0f;
     private int currentStallIndex = -1;
+
+    [Header("Exit Behaviour")]
+    public Transform bathroomExitPoint;
+    private bool isEscaping = false;
+    private bool isPaused = false;
+
+
 
     void Start()
     {
@@ -57,15 +54,6 @@ public class ChildAI : MonoBehaviour
 
     void Update()
     {
-        // Handle screaming state timer
-        if (isScreaming)
-        {
-            screamTimer -= Time.deltaTime;
-            if (screamTimer <= 0)
-            {
-                StopScreaming();
-            }
-        }
 
         // Handle idle timer
         if (isIdle)
@@ -118,49 +106,14 @@ public class ChildAI : MonoBehaviour
         SetRandomStallAsTarget();
     }
 
-    // Call this method when you want the child to start screaming (e.g., from another script)
-    public void TriggerScream()
-    {
-        if (!isScreaming)
-        {
-            StartScreaming();
-        }
-    }
-
-    void StartScreaming()
-    {
-        isScreaming = true;
-        isIdle = false; // Interrupt idle if screaming
-        screamTimer = screamDuration;
-
-        // Play scream sound
-        if (audioSource != null && screamSound != null)
-        {
-            audioSource.PlayOneShot(screamSound);
-        }
-
-        // Increase speed for running
-        speed = originalSpeed * runSpeedMultiplier;
-
-        // Run to random bathroom point
-        SetRandomBathroomPointAsTarget();
-    }
-
-    void StopScreaming()
-    {
-        isScreaming = false;
-        speed = originalSpeed;
-
-        // Go back to a random stall
-        SetRandomStallAsTarget();
-    }
+    
 
     void UpdatePath()
     {
         if (target == null) return;
 
         // Don't update path if idle
-        if (isIdle) return;
+        if (isIdle || isPaused) return;
 
         if (seeker.IsDone())
         {
@@ -180,7 +133,7 @@ public class ChildAI : MonoBehaviour
     void FixedUpdate()
     {
         // Don't move if idle or screaming (screaming still moves, but we handle that separately)
-        if (isIdle)
+        if (isIdle || isPaused)
         {
             return;
         }
@@ -212,14 +165,64 @@ public class ChildAI : MonoBehaviour
             currentWaypoint++;
         }
 
+        if (isEscaping && bathroomExitPoint != null)
+        {
+            float exitDistance = Vector2.Distance(rb.position, bathroomExitPoint.position);
+
+            if (exitDistance < 0.5f)
+            {
+                rb.linearVelocity = Vector2.zero;
+                enabled = false;
+                Debug.Log("Child escaped the bathroom");
+            }
+        }
+
         // Check if we've reached the target (last waypoint)
         if (currentWaypoint >= path.vectorPath.Count)
         {
             // If we're not screaming and we're at a toilet stall, start idling
-            if (!isScreaming && toiletStalls != null && System.Array.Exists(toiletStalls, stall => stall == target))
+            if (!isEscaping && toiletStalls != null && System.Array.Exists(toiletStalls, stall => stall == target))
             {
                 StartIdle();
             }
+        }
+    }
+
+    public void TriggerConfusedPause(float pauseDuration)
+    {
+        if (!isEscaping)
+        {
+            StartCoroutine(ConfusedPauseRoutine(pauseDuration));
+        }
+    }
+
+    public void TriggerEscape(float speedMultiplier)
+    {
+        if (isEscaping) return;
+
+        isEscaping = true;
+        isIdle = false;
+
+        speed = originalSpeed * speedMultiplier;
+
+        if (bathroomExitPoint != null)
+        {
+            target = bathroomExitPoint;
+        }
+    }
+
+    IEnumerator ConfusedPauseRoutine(float pauseDuration)
+    {
+        isPaused = true;
+        rb.linearVelocity = Vector2.zero;
+
+        yield return new WaitForSeconds(pauseDuration);
+
+        isPaused = false;
+
+        if (!isEscaping && target == null && toiletStalls != null && toiletStalls.Length > 0)
+        {
+            SetRandomStallAsTarget();
         }
     }
 }
