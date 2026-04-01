@@ -21,7 +21,7 @@ public class ChildAwarenessFSM : MonoBehaviour
 
     [Header("References")]
     public ChildAI childAI;
-    public GirlSounds girlSounds;
+    AudioManager AudioManager;
 
     [Header("Reaction Icons")]
     public GameObject questionMarkIcon;
@@ -39,6 +39,11 @@ public class ChildAwarenessFSM : MonoBehaviour
     private bool confusedTriggered = false;
     private bool agitatedTriggered = false;
     private bool panickedTriggered = false;
+
+    private void Awake()
+    {
+        AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
+    }
 
     void Start()
     {
@@ -81,8 +86,10 @@ public class ChildAwarenessFSM : MonoBehaviour
         if (questionMarkIcon != null)
             questionMarkIcon.SetActive(true);
 
-        if (girlSounds != null)
-            girlSounds.PlayDeepBreath();
+        if (AudioManager != null)
+        {
+            AudioManager.PlaySFX(AudioManager.Gulp);
+        }
 
         if (childAI != null)
             childAI.TriggerConfusedPause(confusedPauseDuration);
@@ -99,8 +106,10 @@ public class ChildAwarenessFSM : MonoBehaviour
         if (agitatedIcon != null)
             agitatedIcon.SetActive(true);
 
-        if (girlSounds != null)
-            girlSounds.PlayMultipleBreath();
+        if (AudioManager != null)
+        {
+            AudioManager.PlaySFX(AudioManager.MultipleBreaths);
+        }
 
         if (childAI != null)
             childAI.speed = agitatedSpeed;
@@ -117,8 +126,10 @@ public class ChildAwarenessFSM : MonoBehaviour
         if (exclamationIcon != null)
             exclamationIcon.SetActive(true);
 
-        if (girlSounds != null)
-            girlSounds.PlayScream();
+        if (AudioManager != null)
+        {
+            AudioManager.PlaySFX(AudioManager.ChildScream);
+        }
 
         if (childAI != null)
         {

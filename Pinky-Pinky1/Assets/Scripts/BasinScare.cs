@@ -5,7 +5,7 @@ using System.Collections;
 public class BasinScare : MonoBehaviour
 {
     public GameObject BasinText;       // "Press E" prompt
-    public AudioSource scareAudio;      // Scare sound
+    AudioManager AudioManager;     // Scare sound
     public AwarenessScript awarenessScript; // Reference to the AwarenessBar
     public CooldownTimer_bar cooldownBar; // Reference to the cooldown timer bar
 
@@ -17,6 +17,12 @@ public class BasinScare : MonoBehaviour
     public int cooldownDuration = 5; // Cooldown duration in seconds
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
+
+    private void Awake()
+    {
+        AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
+    }
+
     void Start()
     {
         // Make sure text is hidden at start
@@ -57,11 +63,7 @@ public class BasinScare : MonoBehaviour
             Debug.LogError("Awareness Script is not assigned in the inspector!");
         }
 
-        // Check audio source
-        if (scareAudio == null)
-        {
-            Debug.LogError("Scare Audio is not assigned in the inspector!");
-        }
+      
     }
 
     void Update()
@@ -115,14 +117,9 @@ public class BasinScare : MonoBehaviour
         Debug.Log("E pressed - Scare triggered! Awareness +" + scareAmount);
 
         // Play sound
-        if (scareAudio != null)
+        if (AudioManager != null)
         {
-            scareAudio.Play();
-            Debug.Log("Playing scare sound");
-        }
-        else
-        {
-            Debug.LogError("Cannot play sound - AudioSource is null!");
+            AudioManager.PlaySFX(AudioManager.Droplet);
         }
 
         // Start cooldown routine

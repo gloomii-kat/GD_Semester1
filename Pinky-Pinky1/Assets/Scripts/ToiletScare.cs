@@ -3,7 +3,7 @@ using UnityEngine;
 public class ToiletScare : MonoBehaviour
 {
     public GameObject toiletText;       // "Press E" prompt
-    public AudioSource scareAudio;      // Scare sound
+    AudioManager AudioManager;     // Scare sound
     public AwarenessScript awarenessScript; // Reference to the AwarenessBar
     public CooldownTimer_bar cooldownBar; // Reference to the cooldown timer bar
 
@@ -15,6 +15,12 @@ public class ToiletScare : MonoBehaviour
     public int cooldownDuration = 30; // Cooldown duration in seconds
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
+
+    private void Awake()
+    {
+        AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
+    }
+
     void Start()
     {
         // Make sure text is hidden at start
@@ -53,12 +59,6 @@ public class ToiletScare : MonoBehaviour
         else
         {
             Debug.LogError("Awareness Script is not assigned in the inspector!");
-        }
-
-        // Check audio source
-        if (scareAudio == null)
-        {
-            Debug.LogError("Scare Audio is not assigned in the inspector!");
         }
     }
 
@@ -106,14 +106,9 @@ public class ToiletScare : MonoBehaviour
         Debug.Log("E pressed - Scare triggered! Awareness +" + scareAmount);
 
         // Play sound
-        if (scareAudio != null)
+        if (AudioManager != null)
         {
-            scareAudio.Play();
-            Debug.Log("Playing scare sound");
-        }
-        else
-        {
-            Debug.LogError("Cannot play sound - AudioSource is null!");
+            AudioManager.PlaySFX(AudioManager.DoorBanging);
         }
 
         // Start cooldown coroutine

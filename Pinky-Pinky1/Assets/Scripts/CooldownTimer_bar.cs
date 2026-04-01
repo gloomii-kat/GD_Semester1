@@ -12,6 +12,13 @@ public class CooldownTimer_bar : MonoBehaviour
     private int remainingDuration;
     private Coroutine currentCoroutine;
 
+    AudioManager AudioManager;
+
+    private void Awake()
+    {
+        AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
+    }
+
     private void Start()
     {
         // Don't start automatically - wait for StartCooldown to be called
@@ -42,28 +49,34 @@ public class CooldownTimer_bar : MonoBehaviour
 
     private IEnumerator UpdateTimer()
     {
-        while (remainingDuration >= 0)
+        while (remainingDuration > 0) // Change to > 0 to handle the last second specifically
         {
-           
-            int seconds = remainingDuration % 60;
+            // Play tick sound at the start of every second
+            //if (AudioManager != null)
+            //{
+            //    AudioManager.PlaySFX(AudioManager.ClockTick);
+            //}
 
-            if (uiTxt != null)
-            {
-                // Show minutes:seconds format
-                uiTxt.text = $"{seconds:00}";
-            }
+            // Update UI
+            if (uiTxt != null) uiTxt.text = $"{remainingDuration % 60:00}";
+            if (uiFill != null) uiFill.fillAmount = Mathf.InverseLerp(0, Duration, remainingDuration);
 
-            // Update the fill amount of the cooldown bar
-            if (uiFill != null)
-            {
-                uiFill.fillAmount = Mathf.InverseLerp(0, Duration, remainingDuration);
-            }
-
-            remainingDuration--; // Decrease the remaining duration
+            remainingDuration--;
             yield return new WaitForSeconds(1f);
         }
 
-        // Cooldown finished - hide the bar
+        // Timer is now officially 0
+        if (uiTxt != null) uiTxt.text = "00";
+        if (uiFill != null) uiFill.fillAmount = 0;
+
+        // Play completion sound
+        if (AudioManager != null)
+        {
+            AudioManager.PlaySFX(AudioManager.ClockAlarm);
+        }else         {
+            Debug.LogWarning("AudioManager not found. Cannot play ClockAlarm sound.");
+        }
+
         gameObject.SetActive(false);
         currentCoroutine = null;
     }

@@ -29,21 +29,21 @@ public class LightFlicker : MonoBehaviour
     private bool isOnCooldown = false;
 
     [Header("Audio")]
-    public AudioClip flickerSound;
-    private AudioSource audioSource;
+    AudioManager AudioManager;
 
     private bool isYellowActive = true;
     private bool playerInRange = false;
     private bool isScaring = false;
 
+    private void Awake()
+    {
+        AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
+    }
+
     void Start()
     {
         if (interactionText != null)
             interactionText.gameObject.SetActive(false);
-
-        audioSource = GetComponent<AudioSource>();
-        if (audioSource == null && flickerSound != null)
-            audioSource = gameObject.AddComponent<AudioSource>();
     }
 
     void Update()
@@ -58,6 +58,11 @@ public class LightFlicker : MonoBehaviour
     {
         isScaring = true;
         isOnCooldown = true;
+
+        if (AudioManager != null)
+        {
+            AudioManager.PlaySFX(AudioManager.Flicker);
+        }
 
         // Hide interaction text when cooldown starts
         if (playerInRange && interactionText != null)
