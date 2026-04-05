@@ -43,5 +43,11 @@ TagManager:
   - name: Default
     uniqueID: 0
     locked: 0
+  - name: Girlcanvas
+    uniqueID: 3419718071
+    locked: 0
+  - name: PlayerCanvas
+    uniqueID: 213817947
+    locked: 0
   m_RenderingLayers:
   - Default

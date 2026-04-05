@@ -25,7 +25,7 @@ public class LightFlicker : MonoBehaviour
     public float maxFlickerInterval = 0.25f;
 
     [Header("Cooldown")]
-    public float cooldownDuration = 3f;
+    public float cooldownDuration = 5f;
     private bool isOnCooldown = false;
 
     [Header("Audio")]

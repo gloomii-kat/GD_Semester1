@@ -14,7 +14,7 @@ public class BasinScare : MonoBehaviour
     private bool isOnCooldown = false;  // Track if cooldown is active
 
     public int scareAmount = 10; // Amount to increase awareness by
-    public int cooldownDuration = 5; // Cooldown duration in seconds
+    public int cooldownDuration = 20; // Cooldown duration in seconds
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
 
@@ -119,7 +119,7 @@ public class BasinScare : MonoBehaviour
         // Play sound
         if (AudioManager != null)
         {
-            AudioManager.PlaySFX(AudioManager.Droplet);
+            AudioManager.PlaySFX(AudioManager.RunningWater);
         }
 
         // Start cooldown routine

@@ -27,6 +27,7 @@ public class ChildAwarenessFSM : MonoBehaviour
     public GameObject questionMarkIcon;
     public GameObject agitatedIcon;
     public GameObject exclamationIcon;
+    public GameObject SweatDropIcon;
 
     [Header("Movement Speeds")]
     public float calmSpeed = 200f;
@@ -83,10 +84,13 @@ public class ChildAwarenessFSM : MonoBehaviour
         confusedTriggered = true;
 
         HideAllIcons();
-        if (questionMarkIcon != null)
+        if (questionMarkIcon != null && SweatDropIcon != null)
+        {
             questionMarkIcon.SetActive(true);
+            SweatDropIcon.SetActive(true);
+        }
 
-        if (AudioManager != null)
+            if (AudioManager != null)
         {
             AudioManager.PlaySFX(AudioManager.Gulp);
         }
@@ -108,7 +112,7 @@ public class ChildAwarenessFSM : MonoBehaviour
 
         if (AudioManager != null)
         {
-            AudioManager.PlaySFX(AudioManager.MultipleBreaths);
+            AudioManager.PlaySFX(AudioManager.deepBreath);
         }
 
         if (childAI != null)
@@ -145,5 +149,6 @@ public class ChildAwarenessFSM : MonoBehaviour
         if (questionMarkIcon != null) questionMarkIcon.SetActive(false);
         if (agitatedIcon != null) agitatedIcon.SetActive(false);
         if (exclamationIcon != null) exclamationIcon.SetActive(false);
+        if (exclamationIcon != null) SweatDropIcon.SetActive(false);
     }
 }
