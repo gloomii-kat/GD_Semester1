@@ -4,6 +4,8 @@ using System.Collections;
 
 public class LightFlicker : MonoBehaviour
 {
+    
+
     [Header("UI Elements")]
     public GameObject yellowPanel;
     public GameObject blackPanel;
@@ -35,6 +37,7 @@ public class LightFlicker : MonoBehaviour
     private bool playerInRange = false;
     private bool isScaring = false;
 
+
     private void Awake()
     {
         AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
@@ -58,6 +61,8 @@ public class LightFlicker : MonoBehaviour
     {
         isScaring = true;
         isOnCooldown = true;
+
+       
 
         if (AudioManager != null)
         {
@@ -91,6 +96,8 @@ public class LightFlicker : MonoBehaviour
             newAwareness = Mathf.Min(newAwareness, awarenessScript.slider.maxValue);
             awarenessScript.SetAwareness(Mathf.RoundToInt(newAwareness));
         }
+
+
 
         isScaring = false;
 

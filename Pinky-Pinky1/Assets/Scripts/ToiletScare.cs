@@ -14,7 +14,13 @@ public class ToiletScare : MonoBehaviour
     public int scareAmount = 10; // Amount to increase awareness by
     public int cooldownDuration = 30; // Cooldown duration in seconds
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+
+    [Header("Suspicion")]
+    public SuspicionScript suspicionScript;
+    public ScareTracker scareTracker;
+    public string scareType = "Toilet";
+    public int suspicionAmount = 6;
+    public int repeatSuspicionPenalty = 10;
 
     private void Awake()
     {
@@ -105,6 +111,18 @@ public class ToiletScare : MonoBehaviour
         ScareHerAss(scareAmount);
         Debug.Log("E pressed - Scare triggered! Awareness +" + scareAmount);
 
+        // Increase suspicion
+        if (suspicionScript != null)
+        {
+            suspicionScript.AddSuspicion(suspicionAmount);
+
+            if (scareTracker != null)
+            {
+                int repeatPenalty = scareTracker.RegisterScare(scareType, repeatSuspicionPenalty);
+                suspicionScript.AddSuspicion(repeatPenalty);
+            }
+        }
+
         // Play sound
         if (AudioManager != null)
         {
@@ -119,6 +137,12 @@ public class ToiletScare : MonoBehaviour
     {
         // Wait for cooldown duration
         yield return new WaitForSeconds(cooldownDuration);
+
+        // Wait a bit longer for the alarm to play
+        if (cooldownBar != null && AudioManager != null && AudioManager.ClockAlarm != null)
+        {
+            yield return new WaitForSeconds(AudioManager.ClockAlarm.length);
+        }
 
         // End cooldown
         isOnCooldown = false;

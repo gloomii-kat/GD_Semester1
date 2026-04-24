@@ -5,37 +5,52 @@ using Pathfinding;
 
 public class ChildAI : MonoBehaviour
 {
-    public Transform target; // Will be set dynamically
+    public Transform target;
     public float speed = 200f;
     public float nextWaypointDistance = 3f;
 
     [Header("Movement Points")]
-    public Transform[] toiletStalls; // Assign toilet stall positions in inspector
-    public Transform[] bathroomPoints; // Random points in bathroom to run to when scared
+    public Transform[] toiletStalls;
+    public Transform[] basinPoints;
+    public Transform[] lightPoints;
 
     [Header("Idle Behavior")]
-    public float idleTimeAtStalls = 3f; // Time to wait at each stall
+    public float idleTimeAtPoints = 2f;
+
+    [Header("Exit Behaviour")]
+    public Transform bathroomExitPoint;
+
+    [Header("State-Based Pattern Breaking")]
+    [Range(0f, 1f)] public float calmBreakChance = 0.1f;
+    [Range(0f, 1f)] public float confusedBreakChance = 0.2f;
+    [Range(0f, 1f)] public float agitatedBreakChance = 0.4f;
+    [Range(0f, 1f)] public float panickedBreakChance = 0.7f;
+
+    private float currentBreakChance = 0.1f;
 
     private Path path;
     private int currentWaypoint = 0;
-    private bool reachedEndOfPath = false;
 
     private Seeker seeker;
     private Rigidbody2D rb;
 
     private float originalSpeed;
 
-    // New variables for idle behavior
     private bool isIdle = false;
     private float idleTimer = 0f;
-    private int currentStallIndex = -1;
-
-    [Header("Exit Behaviour")]
-    public Transform bathroomExitPoint;
     private bool isEscaping = false;
     private bool isPaused = false;
 
+    // Pattern: Stall -> Basin -> Stall -> Light
+    private int patternIndex = 0;
 
+    private enum PatrolType
+    {
+        Stall,
+        Basin,
+        StallAgain,
+        Light
+    }
 
     void Start()
     {
@@ -43,19 +58,13 @@ public class ChildAI : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         originalSpeed = speed;
 
-        // Start by moving to a random toilet stall
-        if (toiletStalls != null && toiletStalls.Length > 0)
-        {
-            SetRandomStallAsTarget();
-        }
+        SetNextPatternTarget();
 
-        InvokeRepeating("UpdatePath", 0f, .5f);
+        InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
     }
 
     void Update()
     {
-
-        // Handle idle timer
         if (isIdle)
         {
             idleTimer -= Time.deltaTime;
@@ -66,53 +75,87 @@ public class ChildAI : MonoBehaviour
         }
     }
 
-    void SetRandomStallAsTarget()
+    void SetNextPatternTarget()
     {
-        int randomIndex;
+        bool breakPattern = Random.value < currentBreakChance;
 
-        // Make sure we don't pick the same stall twice in a row
-        do
+        if (breakPattern)
         {
-            randomIndex = Random.Range(0, toiletStalls.Length);
-        } while (toiletStalls.Length > 1 && randomIndex == currentStallIndex);
+            int randomCategory = Random.Range(0, 3); // 0 = Stall, 1 = Basin, 2 = Light
 
-        currentStallIndex = randomIndex;
-        target = toiletStalls[currentStallIndex];
+            switch (randomCategory)
+            {
+                case 0:
+                    target = GetRandomPoint(toiletStalls);
+                    Debug.Log("Pattern broken -> random Stall");
+                    break;
+
+                case 1:
+                    target = GetRandomPoint(basinPoints);
+                    Debug.Log("Pattern broken -> random Basin");
+                    break;
+
+                case 2:
+                    target = GetRandomPoint(lightPoints);
+                    Debug.Log("Pattern broken -> random Light");
+                    break;
+            }
+        }
+        else
+        {
+            PatrolType nextType = (PatrolType)patternIndex;
+
+            switch (nextType)
+            {
+                case PatrolType.Stall:
+                case PatrolType.StallAgain:
+                    target = GetRandomPoint(toiletStalls);
+                    Debug.Log("Following pattern -> Stall");
+                    break;
+
+                case PatrolType.Basin:
+                    target = GetRandomPoint(basinPoints);
+                    Debug.Log("Following pattern -> Basin");
+                    break;
+
+                case PatrolType.Light:
+                    target = GetRandomPoint(lightPoints);
+                    Debug.Log("Following pattern -> Light");
+                    break;
+            }
+
+            patternIndex = (patternIndex + 1) % 4;
+        }
     }
 
-    void SetRandomBathroomPointAsTarget()
+    Transform GetRandomPoint(Transform[] points)
     {
-        if (bathroomPoints != null && bathroomPoints.Length > 0)
+        if (points == null || points.Length == 0)
         {
-            int randomIndex = Random.Range(0, bathroomPoints.Length);
-            target = bathroomPoints[randomIndex];
+            Debug.LogWarning("Point array is empty!");
+            return null;
         }
+
+        int randomIndex = Random.Range(0, points.Length);
+        return points[randomIndex];
     }
 
     void StartIdle()
     {
         isIdle = true;
-        idleTimer = idleTimeAtStalls;
-
-        // Stop moving while idle
+        idleTimer = idleTimeAtPoints;
         rb.linearVelocity = Vector2.zero;
     }
 
     void StopIdle()
     {
         isIdle = false;
-
-        // Move to the next random stall
-        SetRandomStallAsTarget();
+        SetNextPatternTarget();
     }
-
-    
 
     void UpdatePath()
     {
         if (target == null) return;
-
-        // Don't update path if idle
         if (isIdle || isPaused) return;
 
         if (seeker.IsDone())
@@ -132,7 +175,6 @@ public class ChildAI : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Don't move if idle or screaming (screaming still moves, but we handle that separately)
         if (isIdle || isPaused)
         {
             return;
@@ -145,12 +187,7 @@ public class ChildAI : MonoBehaviour
 
         if (currentWaypoint >= path.vectorPath.Count)
         {
-            reachedEndOfPath = true;
             return;
-        }
-        else
-        {
-            reachedEndOfPath = false;
         }
 
         Vector2 direction = ((Vector2)path.vectorPath[currentWaypoint] - rb.position).normalized;
@@ -177,14 +214,13 @@ public class ChildAI : MonoBehaviour
             }
         }
 
-        // Check if we've reached the target (last waypoint)
         if (currentWaypoint >= path.vectorPath.Count)
         {
-            // If we're not screaming and we're at a toilet stall, start idling
-            if (!isEscaping && toiletStalls != null && System.Array.Exists(toiletStalls, stall => stall == target))
+            if (!isEscaping)
             {
                 StartIdle();
             }
+            
         }
     }
 
@@ -202,7 +238,6 @@ public class ChildAI : MonoBehaviour
 
         isEscaping = true;
         isIdle = false;
-
         speed = originalSpeed * speedMultiplier;
 
         if (bathroomExitPoint != null)
@@ -220,9 +255,37 @@ public class ChildAI : MonoBehaviour
 
         isPaused = false;
 
-        if (!isEscaping && target == null && toiletStalls != null && toiletStalls.Length > 0)
+        if (!isEscaping)
         {
-            SetRandomStallAsTarget();
+            SetNextPatternTarget();
         }
+    }
+
+    public void SetBreakChanceByState(string stateName)
+    {
+        switch (stateName)
+        {
+            case "Calm":
+                currentBreakChance = calmBreakChance;
+                break;
+
+            case "Confused":
+                currentBreakChance = confusedBreakChance;
+                break;
+
+            case "Agitated":
+                currentBreakChance = agitatedBreakChance;
+                break;
+
+            case "Panicked":
+                currentBreakChance = panickedBreakChance;
+                break;
+
+            default:
+                currentBreakChance = calmBreakChance;
+                break;
+        }
+
+        Debug.Log("Current break chance set to: " + currentBreakChance + " for state " + stateName);
     }
 }

@@ -70,7 +70,7 @@ public class CooldownTimer_bar : MonoBehaviour
             yield return new WaitForSeconds(1f);
         }
 
-        // Timer finished - Play alarm
+        // Timer finished - Update UI to 00
         if (uiTxt != null)
             uiTxt.text = "00";
         if (uiFill != null)
@@ -81,13 +81,17 @@ public class CooldownTimer_bar : MonoBehaviour
         {
             AudioManager.PlaySFX(AudioManager.ClockAlarm);
             Debug.Log("Alarm played!");
+
+            // Wait for the alarm to finish playing (optional but recommended)
+            yield return new WaitForSeconds(AudioManager.ClockAlarm.length);
         }
         else
         {
             Debug.LogWarning("Can't play alarm: AudioManager or ClockAlarm clip is missing!");
         }
 
-        gameObject.SetActive(false);
+        // Don't deactivate here - let BasinScare handle it
+        // gameObject.SetActive(false);
         currentCoroutine = null;
     }
 

@@ -4,20 +4,17 @@ using UnityEngine.SceneManagement;
 public class SceneLoader : MonoBehaviour
 {
     public int sceneID;
-
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            ChangeScene(sceneID);
-        }
-    }
-
-    public void ChangeScene(int sceneID)
+    // For buttons (no parameter)
+    public void LoadNextScene()
     {
         SceneManager.LoadScene(sceneID);
     }
 
+    // For scripts (with parameter)
+    public void LoadNextScene(int id)
+    {
+        SceneManager.LoadScene(id);
+    }
     public void Exit()
     {
 #if UNITY_EDITOR

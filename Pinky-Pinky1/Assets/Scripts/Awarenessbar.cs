@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro; 
 
 public class AwarenessScript : MonoBehaviour
 {
@@ -16,6 +17,8 @@ public class AwarenessScript : MonoBehaviour
     [SerializeField] private Color midColor = Color.yellow;
     [SerializeField] private Color highColor = Color.blue;
     [SerializeField] private float midPoint = 0.5f;
+
+    [SerializeField] private TMP_Text awarenessText;
 
     void Start()
     {
@@ -61,6 +64,8 @@ public class AwarenessScript : MonoBehaviour
         {
             fillImage.color = gradient.Evaluate(1f);
         }
+
+        UpdateText();
     }
 
     public void SetAwareness(int awareness)
@@ -71,6 +76,16 @@ public class AwarenessScript : MonoBehaviour
         {
             float normalizedValue = Mathf.Clamp01(awareness / slider.maxValue);
             fillImage.color = gradient.Evaluate(normalizedValue);
+        }
+
+        UpdateText();
+    }
+
+    void UpdateText()
+    {
+        if (awarenessText != null && slider != null)
+        {
+            awarenessText.text = Mathf.RoundToInt(slider.value) + " / " + Mathf.RoundToInt(slider.maxValue);
         }
     }
 }

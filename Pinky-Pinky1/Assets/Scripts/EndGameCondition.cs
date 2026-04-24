@@ -4,12 +4,14 @@ public class EndGameCondition : MonoBehaviour
 {
     [SerializeField] private AwarenessScript awarenessScript; // Reference to your awareness script
     [SerializeField] private SceneLoader sceneLoader; // Reference to your scene loader
+    [SerializeField] private SuspicionScript suspicionScript;
     private AudioManager audioManager; // Reference to AudioManager
 
     [Header("End Game Settings")]
     public bool checkOnUpdate = true; // Check every frame
     public float delayBeforeLoading = 0f; // Optional delay before loading scene
-    public int endGameSceneID = 1; // The scene ID to load when game ends
+    public int winScene = 2; // The scene ID to load when game ends
+    public int loseSceneID = 3;
 
     [Header("Audio Settings")]
     public bool playEvilLaugh = true; // Play evil laugh when game ends
@@ -17,6 +19,9 @@ public class EndGameCondition : MonoBehaviour
     public bool keepMusicPlaying = true; // Set to true to keep background music playing
     public bool fadeOutMusic = false; // Fade out music instead of stopping immediately
     public float musicFadeOutDuration = 2f; // How long to fade out music
+
+
+
 
     private bool hasEnded = false;
 
@@ -54,6 +59,16 @@ public class EndGameCondition : MonoBehaviour
             Debug.LogError("EndGameCondition: No AwarenessScript found in scene!");
         }
 
+        if (suspicionScript == null)
+        {
+            suspicionScript = FindFirstObjectByType<SuspicionScript>();
+        }
+
+        if (suspicionScript == null)
+        {
+            Debug.LogError("EndGameCondition: No SuspicionScript found in scene!");
+        }
+
         if (sceneLoader == null)
         {
             Debug.LogError("EndGameCondition: No SceneLoader found in scene!");
@@ -65,18 +80,17 @@ public class EndGameCondition : MonoBehaviour
         // Check if awareness is full
         if (checkOnUpdate && !hasEnded && awarenessScript != null)
         {
-            if (awarenessScript.slider.value >= awarenessScript.slider.maxValue)
+            // Win condition
+            if (awarenessScript != null && awarenessScript.slider.value >= awarenessScript.slider.maxValue)
             {
                 TriggerEndGame();
             }
+
         }
 
-        // Use End key for testing
-        if (Input.GetKeyDown(KeyCode.End))
-        {
-            TriggerEndGame();
-        }
     }
+
+
 
     public void TriggerEndGame()
     {
@@ -127,6 +141,20 @@ public class EndGameCondition : MonoBehaviour
         {
             LoadEndScene();
         }
+    }
+
+    public void TriggerLoseGame()
+    {
+        if (hasEnded || sceneLoader == null) return;
+
+        hasEnded = true;
+
+        Debug.Log("Lose condition triggered - suspicion full");
+
+        Time.timeScale = 1f;
+        PauseMenu.GameIsPaused = false;
+
+        sceneLoader.LoadNextScene(loseSceneID);
     }
 
     private void PlayEndGameSounds()
@@ -182,14 +210,14 @@ public class EndGameCondition : MonoBehaviour
             }
 
             // Load the end game scene
-            sceneLoader.ChangeScene(endGameSceneID);
+            sceneLoader.LoadNextScene(winScene);
         }
     }
 
     private void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
     {
         // Check if we loaded the end game scene
-        if (scene.buildIndex == endGameSceneID)
+        if (scene.buildIndex == winScene)
         {
             Debug.Log("End game scene loaded - music continues playing");
 

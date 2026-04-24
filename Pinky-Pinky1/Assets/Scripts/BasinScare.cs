@@ -9,6 +9,7 @@ public class BasinScare : MonoBehaviour
     public AwarenessScript awarenessScript; // Reference to the AwarenessBar
     public CooldownTimer_bar cooldownBar; // Reference to the cooldown timer bar
 
+
     private bool playerInRange = false;
     private bool littleGirlInRange = false;
     private bool isOnCooldown = false;  // Track if cooldown is active
@@ -16,7 +17,6 @@ public class BasinScare : MonoBehaviour
     public int scareAmount = 10; // Amount to increase awareness by
     public int cooldownDuration = 20; // Cooldown duration in seconds
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
 
     private void Awake()
     {
@@ -100,6 +100,8 @@ public class BasinScare : MonoBehaviour
         // Set cooldown
         isOnCooldown = true;
 
+        
+
         // Show and start cooldown bar
         if (cooldownBar != null)
         {
@@ -116,6 +118,7 @@ public class BasinScare : MonoBehaviour
         ScareHerAss(scareAmount);
         Debug.Log("E pressed - Scare triggered! Awareness +" + scareAmount);
 
+
         // Play sound
         if (AudioManager != null)
         {
@@ -131,8 +134,17 @@ public class BasinScare : MonoBehaviour
         // Wait for cooldown duration
         yield return new WaitForSeconds(cooldownDuration);
 
+        // Wait a bit longer for the alarm to play
+        if (cooldownBar != null && AudioManager != null && AudioManager.ClockAlarm != null)
+        {
+            yield return new WaitForSeconds(AudioManager.ClockAlarm.length);
+        }
+
         // End cooldown
         isOnCooldown = false;
+
+      
+        
 
         // Hide cooldown bar
         if (cooldownBar != null)

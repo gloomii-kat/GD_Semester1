@@ -78,15 +78,28 @@ public class PauseMenu : MonoBehaviour
 
     public void QuitGame()
     {
-        Debug.Log("Quitting Game..."); // Log message for debugging
-        Application.Quit(); // Quit the application
-    }
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
+    
+}
 
     public void LoadMenu()
     {
-        Debug.Log("Loading Main Menu..."); // Log message for debugging
-        Time.timeScale = 1f; // Ensure time scale is reset before loading the menu
-        SceneManager.LoadScene("0"); // Load the main menu scene
+        Debug.Log("Loading Main Menu...");
+
+        // Reset game state before loading menu
+        Time.timeScale = 1f;
+        GameIsPaused = false;
+
+        // Make sure to unpause before scene change
+        if (pauseMenuUI != null)
+            pauseMenuUI.SetActive(false);
+
+        // Load by actual scene name (without .unity extension)
+        SceneManager.LoadScene("MainMenu");
     }
 
     // Tutorial panel methods
