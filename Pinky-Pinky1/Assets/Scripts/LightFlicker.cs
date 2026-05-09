@@ -62,8 +62,6 @@ public class LightFlicker : MonoBehaviour
         isScaring = true;
         isOnCooldown = true;
 
-       
-
         if (AudioManager != null)
         {
             AudioManager.PlaySFX(AudioManager.Flicker);

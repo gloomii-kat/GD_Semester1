@@ -17,7 +17,6 @@ public class BasinScare : MonoBehaviour
     public int scareAmount = 10; // Amount to increase awareness by
     public int cooldownDuration = 20; // Cooldown duration in seconds
 
-
     private void Awake()
     {
         AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
@@ -142,9 +141,6 @@ public class BasinScare : MonoBehaviour
 
         // End cooldown
         isOnCooldown = false;
-
-      
-        
 
         // Hide cooldown bar
         if (cooldownBar != null)

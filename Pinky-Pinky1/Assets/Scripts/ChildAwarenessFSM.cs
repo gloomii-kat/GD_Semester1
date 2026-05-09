@@ -22,6 +22,7 @@ public class ChildAwarenessFSM : MonoBehaviour
     [Header("References")]
     public ChildAI childAI;
     AudioManager AudioManager;
+    public GameObject teacherObject;
 
     [Header("Reaction Icons")]
     public GameObject questionMarkIcon;
@@ -40,6 +41,7 @@ public class ChildAwarenessFSM : MonoBehaviour
     private bool confusedTriggered = false;
     private bool agitatedTriggered = false;
     private bool panickedTriggered = false;
+    private bool teacherActivated = false;
 
     private void Awake()
     {
@@ -139,9 +141,31 @@ public class ChildAwarenessFSM : MonoBehaviour
         {
             childAI.speed = agitatedSpeed;
             childAI.TriggerEscape(panicSpeedMultiplier);
+            childAI.SetBreakChanceByState("Panicked");
         }
 
+        // ADD THIS - Activate the teacher when child panics
+        ActivateTeacher();
+
         Debug.Log("Child entered PANICKED state");
+    }
+
+    void ActivateTeacher()
+    {
+        if (!teacherActivated && teacherObject != null)
+        {
+            teacherActivated = true;
+            teacherObject.SetActive(true);
+            Debug.Log("!!! TEACHER ACTIVATED - Child is panicking !!!");
+        }
+        else if (teacherObject == null)
+        {
+            Debug.LogError("Teacher Object is not assigned in ChildAwarenessFSM Inspector!");
+        }
+        else if (teacherActivated)
+        {
+            Debug.Log("Teacher already activated, ignoring duplicate call.");
+        }
     }
 
     void HideAllIcons()

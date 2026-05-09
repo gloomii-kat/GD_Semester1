@@ -26,6 +26,10 @@ public class ChildAI : MonoBehaviour
     [Range(0f, 1f)] public float agitatedBreakChance = 0.4f;
     [Range(0f, 1f)] public float panickedBreakChance = 0.7f;
 
+    [Header("Teacher Activation")]
+    public GameObject teacherObject; // Now referencing the GameObject, not the script
+    private bool hasActivatedTeacher = false; // Add this flag to prevent multiple activations
+
     private float currentBreakChance = 0.1f;
 
     private Path path;
@@ -58,8 +62,22 @@ public class ChildAI : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         originalSpeed = speed;
 
-        SetNextPatternTarget();
+        // Make sure teacher starts inactive
+        if (teacherObject != null)
+        {
+            teacherObject.SetActive(false);
+            Debug.Log("Teacher starts inactive (disabled)");
+        }
+        else
+        {
+            Debug.LogError("Teacher Object is not assigned in ChildAI Inspector!");
+        }
 
+        hasActivatedTeacher = false; // Initialize the flag
+
+        //ValidatePatrolPoints();
+        SetNextPatternTarget();
+        InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
         InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
     }
 
@@ -261,6 +279,25 @@ public class ChildAI : MonoBehaviour
         }
     }
 
+    public void OnAwarenessFull()
+    {
+        // Only activate teacher once
+        if (!hasActivatedTeacher && teacherObject != null)
+        {
+            hasActivatedTeacher = true;
+            teacherObject.SetActive(true);
+            Debug.Log("Child is fully aware! Teacher activated (GameObject enabled)!");
+        }
+        else if (teacherObject == null)
+        {
+            Debug.LogError("Teacher GameObject reference is NULL! Make sure to assign the Teacher GameObject in the Inspector.");
+        }
+        else if (hasActivatedTeacher)
+        {
+            Debug.Log("Teacher already activated, ignoring duplicate call.");
+        }
+    }
+
     public void SetBreakChanceByState(string stateName)
     {
         switch (stateName)
@@ -279,6 +316,7 @@ public class ChildAI : MonoBehaviour
 
             case "Panicked":
                 currentBreakChance = panickedBreakChance;
+                OnAwarenessFull();
                 break;
 
             default:
