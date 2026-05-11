@@ -78,7 +78,7 @@ public class ChildAI : MonoBehaviour
         //ValidatePatrolPoints();
         SetNextPatternTarget();
         InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
-        InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
+       
     }
 
     void Update()
@@ -91,6 +91,15 @@ public class ChildAI : MonoBehaviour
                 StopIdle();
             }
         }
+
+        // TEST KEYS
+        if (Input.GetKeyDown(KeyCode.P))
+        {
+            SetBreakChanceByState("Panicked");
+
+            TriggerEscape(2f);
+        }
+
     }
 
     void SetNextPatternTarget()
@@ -193,20 +202,9 @@ public class ChildAI : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (isIdle || isPaused)
-        {
-            return;
-        }
-
-        if (path == null || target == null)
-        {
-            return;
-        }
-
-        if (currentWaypoint >= path.vectorPath.Count)
-        {
-            return;
-        }
+        if (isIdle || isPaused) return;
+        if (path == null || target == null) return;
+        if (currentWaypoint >= path.vectorPath.Count) return;
 
         Vector2 direction = ((Vector2)path.vectorPath[currentWaypoint] - rb.position).normalized;
         Vector2 force = direction * speed * Time.deltaTime;
@@ -227,7 +225,7 @@ public class ChildAI : MonoBehaviour
             if (exitDistance < 0.5f)
             {
                 rb.linearVelocity = Vector2.zero;
-                enabled = false;
+                gameObject.SetActive(false); // disables entire child GameObject
                 Debug.Log("Child escaped the bathroom");
             }
         }

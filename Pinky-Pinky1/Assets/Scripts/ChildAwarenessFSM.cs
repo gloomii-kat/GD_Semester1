@@ -24,6 +24,9 @@ public class ChildAwarenessFSM : MonoBehaviour
     AudioManager AudioManager;
     public GameObject teacherObject;
 
+    [Header("Player Visibility")]
+    public PlayerVisibilityController playerVisibility; // Drag Player here in Inspector
+
     [Header("Reaction Icons")]
     public GameObject questionMarkIcon;
     public GameObject agitatedIcon;
@@ -142,6 +145,17 @@ public class ChildAwarenessFSM : MonoBehaviour
             childAI.speed = agitatedSpeed;
             childAI.TriggerEscape(panicSpeedMultiplier);
             childAI.SetBreakChanceByState("Panicked");
+        }
+
+        // Reveal player - this triggers teacher chase
+        if (playerVisibility != null)
+        {
+            playerVisibility.RevealPlayer();
+            Debug.Log("Child panicked - player revealed, teacher incoming");
+        }
+        else
+        {
+            Debug.LogWarning("PlayerVisibilityController not assigned in ChildAwarenessFSM!");
         }
 
         // ADD THIS - Activate the teacher when child panics
