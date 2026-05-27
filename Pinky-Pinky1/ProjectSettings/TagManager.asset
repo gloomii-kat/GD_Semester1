@@ -14,10 +14,10 @@ TagManager:
   - 
   - Water
   - UI
-  - floor
-  - walls
-  - toilet
-  - Colliders
+  - ' '
+  - ' '
+  - Player
+  - Teacher
   - 
   - 
   - 
@@ -49,6 +49,21 @@ TagManager:
     locked: 0
   - name: PlayerCanvas
     uniqueID: 213817947
+    locked: 0
+  - name: Ground
+    uniqueID: 1204572111
+    locked: 0
+  - name: Walkinfront
+    uniqueID: 2151926431
+    locked: 0
+  - name: 'Player '
+    uniqueID: 2764586471
+    locked: 0
+  - name: Walk Behind
+    uniqueID: 2113365327
+    locked: 0
+  - name: Decor
+    uniqueID: 3587031753
     locked: 0
   m_RenderingLayers:
   - Default

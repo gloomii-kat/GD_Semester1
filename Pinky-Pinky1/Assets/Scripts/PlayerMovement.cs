@@ -7,9 +7,8 @@ public class PlayerMovement : MonoBehaviour
     public float moveSpeed = 5f;
     private Rigidbody2D rb;
     private Vector2 moveInput;
-    ///public AwarenessScript awarenessScript;
-   /// public Slider slider;
 
+    [HideInInspector] public bool canMove = true; // Can be accessed by other scripts
 
     void Awake()
     {
@@ -22,14 +21,13 @@ public class PlayerMovement : MonoBehaviour
             Input.GetAxisRaw("Horizontal"),
             Input.GetAxisRaw("Vertical")
         ).normalized;
-
-       // awarenessScript.slider.value = awarenessScript.awarenessLevel;
-
-
     }
 
     void FixedUpdate()
     {
-        rb.linearVelocity = moveInput * moveSpeed;
+        if (canMove)
+            rb.linearVelocity = moveInput * moveSpeed;
+        else
+            rb.linearVelocity = Vector2.zero;
     }
 }

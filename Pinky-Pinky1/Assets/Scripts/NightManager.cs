@@ -1,53 +1,98 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using System.Collections;
 
 public class NightManager : MonoBehaviour
 {
     [Header("Scene Names")]
-    [Tooltip("Exact name of your Game Over scene")]
     public string gameOverSceneName = "GameOver";
-
-    [Tooltip("Exact name of your Win scene")]
     public string winSceneName = "WinScreen";
-
-    [Tooltip("Exact name of Night 2 scene")]
     public string night2SceneName = "Night2";
+    //public string night3SceneName = "Night3";
 
-    [Tooltip("Exact name of Night 3 scene — leave empty if not built yet")]
-    public string night3SceneName = "Night3";
+    [Header("Night Settings")]
+    public int currentNight = 1;
 
-    [Header("Which night is this?")]
-    public int currentNight = 1; // Set this to 1, 2, or 3 in each scene's Inspector
+    [Header("Transition Settings")]
+    public float delayBeforeNextNight = 3f;
 
-    // Called by PlayerVisibilityController's OnPlayerHidden event when timer runs out
+    [Header("Audio")]
+    public bool fadeOutMusic = true;
+    public float musicFadeDuration = 2f;
+
+    private bool transitioning = false;
+
+    private AudioManager audioManager;
+
+    void Awake()
+    {
+        GameObject audioObject = GameObject.FindGameObjectWithTag("Audio");
+
+        if (audioObject != null)
+        {
+            audioManager = audioObject.GetComponent<AudioManager>();
+        }
+    }
+
     public void OnNightComplete()
     {
-        Debug.Log("Night " + currentNight + " complete");
+        if (transitioning)
+            return;
 
+        transitioning = true;
+
+        Debug.Log("Night survived!");
+
+        StartCoroutine(NightCompleteRoutine());
+    }
+
+    IEnumerator NightCompleteRoutine()
+    {
+        if (audioManager != null)
+        {
+            audioManager.RestoreBackgroundMusic();
+
+            if (fadeOutMusic)
+            {
+                yield return StartCoroutine(
+                    audioManager.FadeOutMusic(musicFadeDuration)
+                );
+            }
+        }
+
+        yield return new WaitForSeconds(delayBeforeNextNight);
+
+        LoadNextNight();
+    }
+
+    void LoadNextNight()
+    {
         if (currentNight == 1)
         {
-            if (!string.IsNullOrEmpty(night2SceneName))
-                SceneManager.LoadScene(night2SceneName);
-            else
-                Debug.LogWarning("Night 2 scene name not set in NightManager");
+            SceneManager.LoadScene(night2SceneName);
         }
-        else if (currentNight == 2)
+        /*else if (currentNight == 2)
         {
             if (!string.IsNullOrEmpty(night3SceneName))
                 SceneManager.LoadScene(night3SceneName);
             else
-                SceneManager.LoadScene(winSceneName); // if Night 3 not built yet, go to win
-        }
-        else if (currentNight == 3)
+                SceneManager.LoadScene(winSceneName);
+        }*/
+        else
         {
             SceneManager.LoadScene(winSceneName);
         }
     }
 
-    // Called by TeacherCatch when teacher catches the player
     public void OnGameOver()
     {
-        Debug.Log("Game Over - teacher caught player");
+        if (transitioning)
+            return;
+
+        transitioning = true;
+
+        Debug.Log("Teacher caught player");
+
         SceneManager.LoadScene(gameOverSceneName);
     }
 }

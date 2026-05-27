@@ -4,18 +4,12 @@ using System.Collections;
 
 public class LightFlicker : MonoBehaviour
 {
-    
-
     [Header("UI Elements")]
     public GameObject yellowPanel;
     public GameObject blackPanel;
-    public Image yellowLightSprite;
-    public Image blackLightSprite;
-    public Text interactionText;
-
-    [Header("Awareness Bar")]
-    public AwarenessScript awarenessScript;
-    public int awarenessIncreaseAmount = 10;
+    public UnityEngine.UI.Image yellowLightSprite;
+    public UnityEngine.UI.Image blackLightSprite;
+    public UnityEngine.UI.Text interactionText;
 
     [Header("Flicker Settings")]
     public float flickerInterval = 0.15f;
@@ -26,17 +20,17 @@ public class LightFlicker : MonoBehaviour
     public float minFlickerInterval = 0.05f;
     public float maxFlickerInterval = 0.25f;
 
-    [Header("Cooldown")]
-    public float cooldownDuration = 5f;
-    private bool isOnCooldown = false;
+    [Header("Child Reference")]
+    public GameObject childObject; // Reference to the Child AI GameObject
+    public float escapeSpeedMultiplier = 2f; // How fast the child runs away
 
     [Header("Audio")]
-    AudioManager AudioManager;
+    private AudioManager AudioManager;
 
     private bool isYellowActive = true;
     private bool playerInRange = false;
+    private bool littleGirlInRange = false;
     private bool isScaring = false;
-
 
     private void Awake()
     {
@@ -51,7 +45,16 @@ public class LightFlicker : MonoBehaviour
 
     void Update()
     {
-        if (playerInRange && Input.GetKeyDown(KeyCode.E) && !isScaring && !isOnCooldown)
+        bool bothInRange = playerInRange && littleGirlInRange;
+
+        // Show interaction text if both are in range and not scaring
+        if (interactionText != null)
+        {
+            interactionText.gameObject.SetActive(bothInRange && !isScaring);
+        }
+
+        // Player presses E while both are in trigger and not already scaring
+        if (bothInRange && Input.GetKeyDown(KeyCode.E) && !isScaring)
         {
             StartCoroutine(FlickerScare());
         }
@@ -60,19 +63,23 @@ public class LightFlicker : MonoBehaviour
     IEnumerator FlickerScare()
     {
         isScaring = true;
-        isOnCooldown = true;
 
+        // Hide interaction text immediately
+        if (interactionText != null)
+            interactionText.gameObject.SetActive(false);
+
+        // Make the child run away IMMEDIATELY
+        TriggerChildEscape();
+
+        // Play sound
         if (AudioManager != null)
         {
             AudioManager.PlaySFX(AudioManager.Flicker);
         }
 
-        // Hide interaction text when cooldown starts
-        if (playerInRange && interactionText != null)
-            interactionText.gameObject.SetActive(false);
-
         bool originalState = isYellowActive;
 
+        // Do the flicker effect (this happens while child is already running)
         for (int i = 0; i < flickerCount; i++)
         {
             isYellowActive = !isYellowActive;
@@ -85,27 +92,32 @@ public class LightFlicker : MonoBehaviour
             yield return new WaitForSeconds(currentInterval);
         }
 
+        // Restore light to original state
         isYellowActive = originalState;
         UpdateLightVisuals();
 
-        if (playerInRange && awarenessScript != null)
-        {
-            float newAwareness = awarenessScript.slider.value + awarenessIncreaseAmount;
-            newAwareness = Mathf.Min(newAwareness, awarenessScript.slider.maxValue);
-            awarenessScript.SetAwareness(Mathf.RoundToInt(newAwareness));
-        }
-
-
-
         isScaring = false;
+    }
 
-        // Cooldown period begins after flicker completes
-        yield return new WaitForSeconds(cooldownDuration);
-        isOnCooldown = false;
-
-        // Show interaction text again after cooldown if player is still in range
-        if (playerInRange && interactionText != null)
-            interactionText.gameObject.SetActive(true);
+    void TriggerChildEscape()
+    {
+        if (childObject != null)
+        {
+            ChildAI childAI = childObject.GetComponent<ChildAI>();
+            if (childAI != null)
+            {
+                childAI.TriggerEscape(escapeSpeedMultiplier);
+                Debug.Log("Light flicker scared the child! Child is now escaping!");
+            }
+            else
+            {
+                Debug.LogError("ChildAI component not found on childObject!");
+            }
+        }
+        else
+        {
+            Debug.LogError("Child Object reference is not assigned in LightFlicker!");
+        }
     }
 
     void UpdateLightVisuals()
@@ -121,9 +133,12 @@ public class LightFlicker : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerInRange = true;
-            // Only show interaction text if not on cooldown
-            if (interactionText != null && !isOnCooldown)
-                interactionText.gameObject.SetActive(true);
+            Debug.Log("Player entered light trigger zone");
+        }
+        if (other.CompareTag("LittleGirl"))
+        {
+            littleGirlInRange = true;
+            Debug.Log("Little girl entered light trigger zone");
         }
     }
 
@@ -135,11 +150,15 @@ public class LightFlicker : MonoBehaviour
             if (interactionText != null)
                 interactionText.gameObject.SetActive(false);
         }
+        if (other.CompareTag("LittleGirl"))
+        {
+            littleGirlInRange = false;
+        }
     }
 
     public void TriggerFlickerScare()
     {
-        if (!isScaring && !isOnCooldown && playerInRange)
+        if (!isScaring && playerInRange && littleGirlInRange)
             StartCoroutine(FlickerScare());
     }
 }

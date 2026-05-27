@@ -20,6 +20,11 @@ public class AudioManager : MonoBehaviour
     public AudioClip ClockTick;
     public AudioClip ClockAlarm;
 
+    [Header("Chase Music")]
+    public AudioClip chaseMusic;
+
+    private AudioClip previousMusic;
+
     private void Start()
     {
         musicSource.clip = background;
@@ -117,6 +122,32 @@ public class AudioManager : MonoBehaviour
 
         musicSource.volume = targetVolume;
         Debug.Log("Music faded in");
+    }
+
+    public void PlayChaseMusic()
+    {
+        if (musicSource == null || chaseMusic == null)
+            return;
+
+        previousMusic = musicSource.clip;
+
+        musicSource.Stop();
+        musicSource.clip = chaseMusic;
+        musicSource.Play();
+
+        Debug.Log("Chase music started");
+    }
+
+    public void RestoreBackgroundMusic()
+    {
+        if (musicSource == null || previousMusic == null)
+            return;
+
+        musicSource.Stop();
+        musicSource.clip = previousMusic;
+        musicSource.Play();
+
+        Debug.Log("Background music restored");
     }
 
 }

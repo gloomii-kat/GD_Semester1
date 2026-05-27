@@ -1,182 +1,448 @@
+
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using Pathfinding;
 
 public class TeacherAI : MonoBehaviour
 {
-    [Header("Chase Target")]
+    [Header("Patrol Settings")]
+    public Transform[] hallwayPoints;     // Points along hallway
+    public Transform[] roomCheckPoints;   // Points inside rooms to check
+    public float patrolSpeed = 2f;
+    public float roomCheckSpeed = 1.5f;
+
+    [Header("Room Check Timing")]
+    public float minTimeBetweenRoomChecks = 5f;
+    public float maxTimeBetweenRoomChecks = 10f;
+    public float timeSpentInRoom = 3f;
+
+    [Header("Chase Settings")]
     public Transform playerTarget;
+    public float chaseSpeed = 4f;
+    public float chaseRange = 8f;
+    public float loseSightRange = 12f;
 
-    [Header("Movement")]
-    public float aggressiveSpeed = 220f;
-    public float searchingSpeed = 140f;
-    public float tiredSpeed = 80f;
+    [Header("Search Settings")]
+    public float searchSpeed = 2.5f;
+    public float searchDuration = 5f;
+    private Vector3 lastKnownPlayerPosition;
 
-    public float nextWaypointDistance = 3f;
-
-    [Header("Search Timing")]
-    public float aggressiveTime = 5f;
-    public float searchingTime = 5f;
-    public float tiredTime = 5f;
-
-    
+    [Header("Exit")]
+    public Transform bathroomExit;
+    private bool leavingBathroom = false;
 
     [Header("References")]
     public NightManager nightManager;
+    public GameObject gotchaText;
 
-    private Path path;
-    private int currentWaypoint = 0;
-    private bool reachedEndOfPath = false;
-    private bool facingRight = true;
-
-    private Seeker seeker;
+    private AudioManager audioManager;
     private Rigidbody2D rb;
-
     private float currentSpeed;
 
-    private enum SearchState
+    // Patrol state tracking
+    private int currentPatrolIndex = 0;
+    private bool isWaiting = false;
+    private float waitTimer;
+    private bool isDoingRoomCheck = false;
+    private int currentRoomPointIndex = 0;
+    private Vector3 originalHallwayPosition;
+
+    // FSM States
+    private enum TeacherState
     {
-        Aggressive,
-        Searching,
-        Tired,
-        Finished
+        PatrolHallway,    // Walking the hallway
+        EnteringRoom,     // Going into a room to check
+        CheckingRoom,     // Moving around inside the room
+        LeavingRoom,      // Going back to hallway
+        Chase,            // Chasing player
+        Search,           // Searching for player
+        Exit              // Leaving with caught player
     }
 
-    private SearchState currentState;
-
+    private TeacherState currentState;
     private float stateTimer;
 
     void Awake()
     {
-        seeker = GetComponent<Seeker>();
         rb = GetComponent<Rigidbody2D>();
-      
+
+        GameObject audioObject = GameObject.FindGameObjectWithTag("Audio");
+        if (audioObject != null)
+        {
+            audioManager = audioObject.GetComponent<AudioManager>();
+        }
+
+        if (gotchaText != null)
+            gotchaText.SetActive(false);
     }
 
     void OnEnable()
     {
-        currentState = SearchState.Aggressive;
-        stateTimer = aggressiveTime;
-        currentSpeed = aggressiveSpeed;
+        currentState = TeacherState.PatrolHallway;
+        currentSpeed = patrolSpeed;
 
-        InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
+        // Start hallway patrol
+        if (hallwayPoints != null && hallwayPoints.Length > 0)
+        {
+            currentPatrolIndex = 0;
+        }
 
-        Debug.Log("Teacher activated - AGGRESSIVE chase started");
+        // Schedule first room check
+        ScheduleNextRoomCheck();
+
+        Debug.Log("Teacher activated - PATROLLING HALLWAY");
     }
 
     void OnDisable()
     {
-        CancelInvoke(nameof(UpdatePath));
-
-        path = null;
-        currentWaypoint = 0;
-
         rb.linearVelocity = Vector2.zero;
     }
 
     void Update()
     {
-        HandleSearchStates();
+        switch (currentState)
+        {
+            case TeacherState.PatrolHallway:
+                UpdatePatrolHallwayState();
+                break;
+            case TeacherState.EnteringRoom:
+                UpdateEnteringRoomState();
+                break;
+            case TeacherState.CheckingRoom:
+                UpdateCheckingRoomState();
+                break;
+            case TeacherState.LeavingRoom:
+                UpdateLeavingRoomState();
+                break;
+            case TeacherState.Chase:
+                UpdateChaseState();
+                break;
+            case TeacherState.Search:
+                UpdateSearchState();
+                break;
+            case TeacherState.Exit:
+                UpdateExitState();
+                break;
+        }
     }
 
-    void HandleSearchStates()
+    void UpdatePatrolHallwayState()
     {
-        if (currentState == SearchState.Finished)
-            return;
-
-        stateTimer -= Time.deltaTime;
-
-        if (stateTimer <= 0f)
+        // Check for player first
+        if (IsPlayerInChaseRange())
         {
-            switch (currentState)
+            TransitionToChase();
+            return;
+        }
+
+        // Handle waiting between room checks
+        if (isWaiting)
+        {
+            waitTimer -= Time.deltaTime;
+            if (waitTimer <= 0f)
             {
-                case SearchState.Aggressive:
+                isWaiting = false;
+                StartRoomCheck();
+            }
+            else
+            {
+                rb.linearVelocity = Vector2.zero;
+                return;
+            }
+        }
 
-                    currentState = SearchState.Searching;
-                    stateTimer = searchingTime;
-                    currentSpeed = searchingSpeed;
+        // Patrol hallway points
+        if (hallwayPoints != null && hallwayPoints.Length > 0)
+        {
+            MoveTowardsTarget(hallwayPoints[currentPatrolIndex].position, patrolSpeed);
 
-                    Debug.Log("Teacher is now SEARCHING");
-                    break;
-
-                case SearchState.Searching:
-
-                    currentState = SearchState.Tired;
-                    stateTimer = tiredTime;
-                    currentSpeed = tiredSpeed;
-
-                    Debug.Log("Teacher is getting TIRED");
-                    break;
-
-                case SearchState.Tired:
-
-                    currentState = SearchState.Finished;
-
-                    Debug.Log("Player survived the chase!");
-
-                    if (nightManager != null)
-                    {
-                        nightManager.OnNightComplete();
-                    }
-
-                    gameObject.SetActive(false);
-                    break;
+            float distanceToPoint = Vector2.Distance(transform.position, hallwayPoints[currentPatrolIndex].position);
+            if (distanceToPoint < 0.5f)
+            {
+                // Move to next hallway point
+                currentPatrolIndex = (currentPatrolIndex + 1) % hallwayPoints.Length;
             }
         }
     }
 
-    void UpdatePath()
+    void UpdateEnteringRoomState()
     {
-        if (playerTarget == null)
-            return;
-
-        if (seeker.IsDone())
+        // Check for player during room entry
+        if (IsPlayerInChaseRange())
         {
-            seeker.StartPath(
-                rb.position,
-                playerTarget.position,
-                OnPathComplete
-            );
+            TransitionToChase();
+            return;
+        }
+
+        if (roomCheckPoints != null && roomCheckPoints.Length > 0)
+        {
+            // Move to first room check point
+            MoveTowardsTarget(roomCheckPoints[0].position, roomCheckSpeed);
+
+            float distanceToRoom = Vector2.Distance(transform.position, roomCheckPoints[0].position);
+            if (distanceToRoom < 0.5f)
+            {
+                // Entered the room, start checking around
+                currentState = TeacherState.CheckingRoom;
+                currentRoomPointIndex = 0;
+                Debug.Log("Teacher entered room, now CHECKING inside");
+            }
         }
     }
 
-    void OnPathComplete(Path p)
+    void UpdateCheckingRoomState()
     {
-        if (!p.error)
+        // Check for player during room check
+        if (IsPlayerInChaseRange())
         {
-            path = p;
-            currentWaypoint = 0;
+            TransitionToChase();
+            return;
         }
-    }
 
-    void FixedUpdate()
-    {
-        if (path == null)
-            return;
-
-        if (currentWaypoint >= path.vectorPath.Count)
+        if (roomCheckPoints != null && roomCheckPoints.Length > 0)
         {
-            reachedEndOfPath = true;
-            return;
+            // Move to each check point inside the room
+            MoveTowardsTarget(roomCheckPoints[currentRoomPointIndex].position, roomCheckSpeed);
+
+            float distanceToPoint = Vector2.Distance(transform.position, roomCheckPoints[currentRoomPointIndex].position);
+            if (distanceToPoint < 0.5f)
+            {
+                // Move to next room point
+                currentRoomPointIndex++;
+
+                if (currentRoomPointIndex >= roomCheckPoints.Length)
+                {
+                    // Finished checking all points in room
+                    currentState = TeacherState.LeavingRoom;
+                    Debug.Log("Teacher finished checking room, now LEAVING");
+                }
+            }
         }
         else
         {
-            reachedEndOfPath = false;
+            // No room points, just wait then leave
+            stateTimer -= Time.deltaTime;
+            if (stateTimer <= 0f)
+            {
+                currentState = TeacherState.LeavingRoom;
+            }
+        }
+    }
+
+    void UpdateLeavingRoomState()
+    {
+        // Check for player while leaving
+        if (IsPlayerInChaseRange())
+        {
+            TransitionToChase();
+            return;
         }
 
-        Vector2 direction =
-     ((Vector2)path.vectorPath[currentWaypoint] - rb.position).normalized;
+        // Move back to hallway position (original patrol point)
+        if (hallwayPoints != null && hallwayPoints.Length > 0)
+        {
+            MoveTowardsTarget(hallwayPoints[currentPatrolIndex].position, roomCheckSpeed);
 
-
-        Vector2 force = direction * currentSpeed * Time.deltaTime;
-
-        rb.AddForce(force);
-
-        float distance = Vector2.Distance(
-            rb.position,
-            path.vectorPath[currentWaypoint]
-        );
+            float distanceToHallway = Vector2.Distance(transform.position, hallwayPoints[currentPatrolIndex].position);
+            if (distanceToHallway < 0.5f)
+            {
+                // Back in hallway, resume patrol
+                currentState = TeacherState.PatrolHallway;
+                ScheduleNextRoomCheck();
+                Debug.Log("Teacher back in hallway, resuming PATROL");
+            }
+        }
     }
 
+    void UpdateChaseState()
+    {
+        if (IsPlayerCaught())
+        {
+            CaughtPlayer();
+            return;
+        }
+
+        if (IsPlayerInChaseRange())
+        {
+            lastKnownPlayerPosition = playerTarget.position;
+            MoveTowardsTarget(playerTarget.position, chaseSpeed);
+        }
+        else if (IsPlayerInLoseRange())
+        {
+            TransitionToSearch();
+        }
+        else
+        {
+            TransitionToPatrol();
+        }
     }
+
+    void UpdateSearchState()
+    {
+        stateTimer -= Time.deltaTime;
+        MoveTowardsTarget(lastKnownPlayerPosition, searchSpeed);
+
+        if (stateTimer <= 0f)
+        {
+            TransitionToPatrol();
+        }
+
+        if (IsPlayerInChaseRange())
+        {
+            TransitionToChase();
+        }
+    }
+
+    void UpdateExitState()
+    {
+        if (bathroomExit != null)
+        {
+            MoveTowardsTarget(bathroomExit.position, patrolSpeed);
+        }
+    }
+
+    void MoveTowardsTarget(Vector3 target, float speed)
+    {
+        Vector2 direction = (target - transform.position).normalized;
+        rb.linearVelocity = direction * speed;
+    }
+
+    void ScheduleNextRoomCheck()
+    {
+        float delay = Random.Range(minTimeBetweenRoomChecks, maxTimeBetweenRoomChecks);
+        isWaiting = true;
+        waitTimer = delay;
+        Debug.Log($"Teacher will check a room in {delay} seconds");
+    }
+
+    void StartRoomCheck()
+    {
+        if (roomCheckPoints != null && roomCheckPoints.Length > 0)
+        {
+            currentState = TeacherState.EnteringRoom;
+            Debug.Log("Teacher decided to CHECK a room");
+        }
+        else
+        {
+            // No rooms to check, just keep patrolling
+            ScheduleNextRoomCheck();
+        }
+    }
+
+    void TransitionToPatrol()
+    {
+        currentState = TeacherState.PatrolHallway;
+        currentSpeed = patrolSpeed;
+
+        Debug.Log("Teacher: Returned to PATROL");
+
+        if (audioManager != null)
+        {
+            audioManager.RestoreBackgroundMusic();
+        }
+
+        ScheduleNextRoomCheck();
+    }
+
+    void TransitionToChase()
+    {
+        if (currentState == TeacherState.Exit) return;
+
+        currentState = TeacherState.Chase;
+        currentSpeed = chaseSpeed;
+
+        Debug.Log("Teacher: CHASE - Spotted Pinky!");
+
+        if (audioManager != null)
+        {
+            audioManager.PlayChaseMusic();
+        }
+    }
+
+    void TransitionToSearch()
+    {
+        currentState = TeacherState.Search;
+        currentSpeed = searchSpeed;
+        stateTimer = searchDuration;
+        lastKnownPlayerPosition = playerTarget.position;
+
+        Debug.Log("Teacher: SEARCH - Lost Pinky");
+    }
+
+    void TransitionToExit()
+    {
+        currentState = TeacherState.Exit;
+        leavingBathroom = true;
+        Debug.Log("Teacher: EXITING with Pinky");
+    }
+
+    bool IsPlayerInChaseRange()
+    {
+        if (playerTarget == null) return false;
+        return Vector2.Distance(transform.position, playerTarget.position) < chaseRange;
+    }
+
+    bool IsPlayerInLoseRange()
+    {
+        if (playerTarget == null) return false;
+        return Vector2.Distance(transform.position, playerTarget.position) < loseSightRange;
+    }
+
+    bool IsPlayerCaught()
+    {
+        if (playerTarget == null) return false;
+        return Vector2.Distance(transform.position, playerTarget.position) < 1.5f;
+    }
+
+    void CaughtPlayer()
+    {
+        Debug.Log("TEACHER CAUGHT PINKY!");
+        rb.linearVelocity = Vector2.zero;
+
+        if (gotchaText != null)
+        {
+            gotchaText.SetActive(true);
+            StartCoroutine(HideGotchaTextAfterDelay(2f));
+        }
+
+        TransitionToExit();
+    }
+
+    IEnumerator HideGotchaTextAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (gotchaText != null)
+            gotchaText.SetActive(false);
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        // Hallway points
+        if (hallwayPoints != null)
+        {
+            Gizmos.color = Color.blue;
+            foreach (Transform point in hallwayPoints)
+            {
+                if (point != null)
+                    Gizmos.DrawWireSphere(point.position, 0.3f);
+            }
+        }
+
+        // Room check points
+        if (roomCheckPoints != null)
+        {
+            Gizmos.color = Color.green;
+            foreach (Transform point in roomCheckPoints)
+            {
+                if (point != null)
+                    Gizmos.DrawWireSphere(point.position, 0.3f);
+            }
+        }
+
+        // Chase ranges
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, chaseRange);
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, loseSightRange);
+    }
+}

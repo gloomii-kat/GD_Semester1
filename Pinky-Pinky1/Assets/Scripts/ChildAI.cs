@@ -5,190 +5,95 @@ using Pathfinding;
 
 public class ChildAI : MonoBehaviour
 {
-    public Transform target;
-    public float speed = 200f;
+    // Inspector
+
+    [Header("Movement")]
+    public float wanderSpeed = 150f;
+    public float scaredSpeed = 300f;
     public float nextWaypointDistance = 3f;
 
-    [Header("Movement Points")]
-    public Transform[] toiletStalls;
-    public Transform[] basinPoints;
-    public Transform[] lightPoints;
+    [Header("Wander Points")]
+    public Transform[] wanderPoints;          // Assign room-specific points in Inspector
 
-    [Header("Idle Behavior")]
+    [Header("Idle")]
     public float idleTimeAtPoints = 2f;
 
-    [Header("Exit Behaviour")]
-    public Transform bathroomExitPoint;
+    [Header("Scare")]
+    public Transform exitPoint;               // Where child runs when scared
+    public float scareCooldown = 2f;          // Prevent multiple scares rapidly
+    private bool isScareReady = true;
+    private bool hasBeenScared = false;       // NEW: Track if child was already scared
 
-    [Header("State-Based Pattern Breaking")]
-    [Range(0f, 1f)] public float calmBreakChance = 0.1f;
-    [Range(0f, 1f)] public float confusedBreakChance = 0.2f;
-    [Range(0f, 1f)] public float agitatedBreakChance = 0.4f;
-    [Range(0f, 1f)] public float panickedBreakChance = 0.7f;
+    [Header("Lure")]
+    public float lureDuration = 3f;           // How long child is attracted to lure object
 
-    [Header("Teacher Activation")]
-    public GameObject teacherObject; // Now referencing the GameObject, not the script
-    private bool hasActivatedTeacher = false; // Add this flag to prevent multiple activations
-
-    private float currentBreakChance = 0.1f;
+    // State
+    private enum ChildState { Wander, Lured, Scared }
+    private ChildState state = ChildState.Wander;
 
     private Path path;
     private int currentWaypoint = 0;
-
     private Seeker seeker;
     private Rigidbody2D rb;
 
-    private float originalSpeed;
-
     private bool isIdle = false;
     private float idleTimer = 0f;
-    private bool isEscaping = false;
-    private bool isPaused = false;
+    private Transform currentTarget;
 
-    // Pattern: Stall -> Basin -> Stall -> Light
-    private int patternIndex = 0;
+    // Events — RoomManager listens to these
+    public static event System.Action OnChildScared;   // Fires when this child gets scared
 
-    private enum PatrolType
-    {
-        Stall,
-        Basin,
-        StallAgain,
-        Light
-    }
-
+    // Unity
     void Start()
     {
         seeker = GetComponent<Seeker>();
         rb = GetComponent<Rigidbody2D>();
-        originalSpeed = speed;
 
-        // Make sure teacher starts inactive
-        if (teacherObject != null)
-        {
-            teacherObject.SetActive(false);
-            Debug.Log("Teacher starts inactive (disabled)");
-        }
-        else
-        {
-            Debug.LogError("Teacher Object is not assigned in ChildAI Inspector!");
-        }
-
-        hasActivatedTeacher = false; // Initialize the flag
-
-        //ValidatePatrolPoints();
-        SetNextPatternTarget();
+        SetNextWanderTarget();
         InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
-       
+
+        hasBeenScared = false;  // Initialize
     }
 
     void Update()
     {
-        if (isIdle)
+        switch (state)
         {
-            idleTimer -= Time.deltaTime;
-            if (idleTimer <= 0)
-            {
-                StopIdle();
-            }
+            case ChildState.Wander:
+                HandleIdle();
+                break;
+
+            case ChildState.Lured:
+                // Lured state - just follows target
+                break;
+
+            case ChildState.Scared:
+                CheckExitReached();
+                break;
         }
-
-        // TEST KEYS
-        if (Input.GetKeyDown(KeyCode.P))
-        {
-            SetBreakChanceByState("Panicked");
-
-            TriggerEscape(2f);
-        }
-
     }
 
-    void SetNextPatternTarget()
+    void FixedUpdate()
     {
-        bool breakPattern = Random.value < currentBreakChance;
+        if (isIdle || path == null || currentTarget == null) return;
+        if (currentWaypoint >= path.vectorPath.Count) return;
 
-        if (breakPattern)
-        {
-            int randomCategory = Random.Range(0, 3); // 0 = Stall, 1 = Basin, 2 = Light
+        Vector2 direction = ((Vector2)path.vectorPath[currentWaypoint] - rb.position).normalized;
+        rb.AddForce(direction * GetCurrentSpeed() * Time.deltaTime);
 
-            switch (randomCategory)
-            {
-                case 0:
-                    target = GetRandomPoint(toiletStalls);
-                    Debug.Log("Pattern broken -> random Stall");
-                    break;
+        if (Vector2.Distance(rb.position, path.vectorPath[currentWaypoint]) < nextWaypointDistance)
+            currentWaypoint++;
 
-                case 1:
-                    target = GetRandomPoint(basinPoints);
-                    Debug.Log("Pattern broken -> random Basin");
-                    break;
-
-                case 2:
-                    target = GetRandomPoint(lightPoints);
-                    Debug.Log("Pattern broken -> random Light");
-                    break;
-            }
-        }
-        else
-        {
-            PatrolType nextType = (PatrolType)patternIndex;
-
-            switch (nextType)
-            {
-                case PatrolType.Stall:
-                case PatrolType.StallAgain:
-                    target = GetRandomPoint(toiletStalls);
-                    Debug.Log("Following pattern -> Stall");
-                    break;
-
-                case PatrolType.Basin:
-                    target = GetRandomPoint(basinPoints);
-                    Debug.Log("Following pattern -> Basin");
-                    break;
-
-                case PatrolType.Light:
-                    target = GetRandomPoint(lightPoints);
-                    Debug.Log("Following pattern -> Light");
-                    break;
-            }
-
-            patternIndex = (patternIndex + 1) % 4;
-        }
+        if (currentWaypoint >= path.vectorPath.Count && state == ChildState.Wander)
+            StartIdle();
     }
 
-    Transform GetRandomPoint(Transform[] points)
-    {
-        if (points == null || points.Length == 0)
-        {
-            Debug.LogWarning("Point array is empty!");
-            return null;
-        }
-
-        int randomIndex = Random.Range(0, points.Length);
-        return points[randomIndex];
-    }
-
-    void StartIdle()
-    {
-        isIdle = true;
-        idleTimer = idleTimeAtPoints;
-        rb.linearVelocity = Vector2.zero;
-    }
-
-    void StopIdle()
-    {
-        isIdle = false;
-        SetNextPatternTarget();
-    }
-
+    // Pathfinding
     void UpdatePath()
     {
-        if (target == null) return;
-        if (isIdle || isPaused) return;
-
+        if (isIdle || currentTarget == null) return;
         if (seeker.IsDone())
-        {
-            seeker.StartPath(rb.position, target.position, OnPathComplete);
-        }
+            seeker.StartPath(rb.position, currentTarget.position, OnPathComplete);
     }
 
     void OnPathComplete(Path p)
@@ -200,128 +105,144 @@ public class ChildAI : MonoBehaviour
         }
     }
 
-    void FixedUpdate()
+    // Wander
+    void SetNextWanderTarget()
     {
-        if (isIdle || isPaused) return;
-        if (path == null || target == null) return;
-        if (currentWaypoint >= path.vectorPath.Count) return;
+        if (hasBeenScared) return;  // NEW: Don't set new wander targets if already scared
+        if (wanderPoints == null || wanderPoints.Length == 0) return;
+        currentTarget = wanderPoints[Random.Range(0, wanderPoints.Length)];
+    }
 
-        Vector2 direction = ((Vector2)path.vectorPath[currentWaypoint] - rb.position).normalized;
-        Vector2 force = direction * speed * Time.deltaTime;
-
-        rb.AddForce(force);
-
-        float distance = Vector2.Distance(rb.position, path.vectorPath[currentWaypoint]);
-
-        if (distance < nextWaypointDistance)
+    void HandleIdle()
+    {
+        if (!isIdle) return;
+        idleTimer -= Time.deltaTime;
+        if (idleTimer <= 0f)
         {
-            currentWaypoint++;
-        }
-
-        if (isEscaping && bathroomExitPoint != null)
-        {
-            float exitDistance = Vector2.Distance(rb.position, bathroomExitPoint.position);
-
-            if (exitDistance < 0.5f)
-            {
-                rb.linearVelocity = Vector2.zero;
-                gameObject.SetActive(false); // disables entire child GameObject
-                Debug.Log("Child escaped the bathroom");
-            }
-        }
-
-        if (currentWaypoint >= path.vectorPath.Count)
-        {
-            if (!isEscaping)
-            {
-                StartIdle();
-            }
-            
+            isIdle = false;
+            SetNextWanderTarget();
         }
     }
 
-    public void TriggerConfusedPause(float pauseDuration)
+    void StartIdle()
     {
-        if (!isEscaping)
-        {
-            StartCoroutine(ConfusedPauseRoutine(pauseDuration));
-        }
+        if (hasBeenScared) return;  // NEW: Don't idle if already scared
+        isIdle = true;
+        idleTimer = idleTimeAtPoints;
+        rb.linearVelocity = Vector2.zero;
     }
 
-    public void TriggerEscape(float speedMultiplier)
+    // Scare (called externally by scare objects like toilet, light, basin)
+    public void Scare()
     {
-        if (isEscaping) return;
+        if (hasBeenScared)          // NEW: Already scared, ignore
+        {
+            Debug.Log($"{gameObject.name} already scared, ignoring new scare");
+            return;
+        }
 
-        isEscaping = true;
+        if (state == ChildState.Scared) return;     // Already scared, ignore
+        if (!isScareReady) return;                  // On cooldown
+
+        StartCoroutine(ScareRoutine());
+    }
+
+    IEnumerator ScareRoutine()
+    {
+        hasBeenScared = true;                       // NEW: Mark as permanently scared
+        isScareReady = false;
+        state = ChildState.Scared;
         isIdle = false;
-        speed = originalSpeed * speedMultiplier;
-
-        if (bathroomExitPoint != null)
-        {
-            target = bathroomExitPoint;
-        }
-    }
-
-    IEnumerator ConfusedPauseRoutine(float pauseDuration)
-    {
-        isPaused = true;
         rb.linearVelocity = Vector2.zero;
 
-        yield return new WaitForSeconds(pauseDuration);
-
-        isPaused = false;
-
-        if (!isEscaping)
+        if (exitPoint != null)
         {
-            SetNextPatternTarget();
+            currentTarget = exitPoint;
+            Debug.Log($"{gameObject.name} was scared! Running to exit NOW!");
+        }
+        else
+        {
+            Debug.LogError("Exit point not assigned! Child can't escape!");
+        }
+
+        OnChildScared?.Invoke();                    // Tell RoomManager a child was scared
+
+        // Wait for cooldown (optional, child is already scared permanently)
+        yield return new WaitForSeconds(scareCooldown);
+        isScareReady = true;
+    }
+
+    void CheckExitReached()
+    {
+        if (exitPoint == null) return;
+        if (Vector2.Distance(rb.position, exitPoint.position) < 0.5f)
+        {
+            rb.linearVelocity = Vector2.zero;
+            gameObject.SetActive(false);
+            Debug.Log($"{gameObject.name} escaped the bathroom! She's gone!");
         }
     }
 
-    public void OnAwarenessFull()
+    // Lure (called externally by thrown object)
+    public void Lure(Transform lureTarget)
     {
-        // Only activate teacher once
-        if (!hasActivatedTeacher && teacherObject != null)
+        if (hasBeenScared) return;                 // NEW: Can't lure a scared child
+        if (state == ChildState.Scared) return;     // Can't lure a scared child
+        StartCoroutine(LureRoutine(lureTarget));
+    }
+
+    IEnumerator LureRoutine(Transform lureTarget)
+    {
+        state = ChildState.Lured;
+        isIdle = false;
+        currentTarget = lureTarget;
+
+        yield return new WaitForSeconds(lureDuration);
+
+        if (state == ChildState.Lured && !hasBeenScared)  // Only return to wander if not scared
         {
-            hasActivatedTeacher = true;
-            teacherObject.SetActive(true);
-            Debug.Log("Child is fully aware! Teacher activated (GameObject enabled)!");
-        }
-        else if (teacherObject == null)
-        {
-            Debug.LogError("Teacher GameObject reference is NULL! Make sure to assign the Teacher GameObject in the Inspector.");
-        }
-        else if (hasActivatedTeacher)
-        {
-            Debug.Log("Teacher already activated, ignoring duplicate call.");
+            state = ChildState.Wander;
+            SetNextWanderTarget();
         }
     }
 
-    public void SetBreakChanceByState(string stateName)
+    // Backwards compatibility
+    public void TriggerEscape(float speedMultiplier)
     {
-        switch (stateName)
+        Scare();
+    }
+
+    // Helpers
+    float GetCurrentSpeed()
+    {
+        return state == ChildState.Scared ? scaredSpeed : wanderSpeed;
+    }
+
+    // NEW: Public property to check if child is scared
+    public bool IsScared()
+    {
+        return hasBeenScared;
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        // Draw exit point connection
+        if (exitPoint != null)
         {
-            case "Calm":
-                currentBreakChance = calmBreakChance;
-                break;
-
-            case "Confused":
-                currentBreakChance = confusedBreakChance;
-                break;
-
-            case "Agitated":
-                currentBreakChance = agitatedBreakChance;
-                break;
-
-            case "Panicked":
-                currentBreakChance = panickedBreakChance;
-                OnAwarenessFull();
-                break;
-
-            default:
-                currentBreakChance = calmBreakChance;
-                break;
+            Gizmos.color = Color.green;
+            Gizmos.DrawLine(transform.position, exitPoint.position);
+            Gizmos.DrawWireSphere(exitPoint.position, 0.5f);
         }
 
-        Debug.Log("Current break chance set to: " + currentBreakChance + " for state " + stateName);
+        // Draw wander points
+        if (wanderPoints != null)
+        {
+            Gizmos.color = Color.blue;
+            foreach (Transform point in wanderPoints)
+            {
+                if (point != null)
+                    Gizmos.DrawWireSphere(point.position, 0.3f);
+            }
+        }
     }
 }
