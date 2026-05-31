@@ -1,45 +1,40 @@
 using Pathfinding;
 using System.Collections;
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class ChildAI : MonoBehaviour
 {
-    // Inspector
-
     [Header("Movement")]
     public float wanderSpeed = 150f;
     public float scaredSpeed = 300f;
     public float nextWaypointDistance = 3f;
 
     [Header("Wander Points")]
-    public Transform[] wanderPoints;          // Assign room-specific points in Inspector
+    public Transform[] wanderPoints;
 
     [Header("Idle")]
     public float idleTimeAtPoints = 2f;
 
     [Header("Scare")]
-    public Transform exitPoint;               // Where child runs when scared
-    public float scareCooldown = 2f;          // Prevent multiple scares rapidly
+    public Transform exitPoint;
+    public float scareCooldown = 2f;
     private bool isScareReady = true;
-    private bool hasBeenScared = false;       // NEW: Track if child was already scared
+    private bool hasBeenScared = false;
 
     [Header("Lure")]
-    public float lureDuration = 3f;           // How long child is attracted to lure object
+    public float lureDuration = 3f;
 
     [Header("References")]
     public Transform pinky;
 
     [Header("Separation")]
-    public float separationRadius = 1.5f;      // How close other children can get
-    public float separationForce = 15f;         // Force to push away (REDUCED from default)
+    public float separationRadius = 1.5f;
+    public float separationForce = 15f;
 
-
-    // Add to ChildAI.cs - near the top with other variables
+    // Internal state
     private bool isInitialized = false;
 
-    // State
     private enum ChildState { Wander, Lured, Scared }
     private ChildState state = ChildState.Wander;
 
@@ -50,40 +45,34 @@ public class ChildAI : MonoBehaviour
 
     private bool isIdle = false;
     private float idleTimer = 0f;
+
+    // Public so nearby children can check each other's targets
     public Transform currentTarget;
 
-    // Events — RoomManager listens to these
-    public static event System.Action OnChildScared;   // Fires when this child gets scared
+    // Cooldown to prevent SetNextWanderTarget being called too rapidly on collision
+    private float retargetCooldown = 0f;
 
-    // Unity
+    public static event System.Action OnChildScared;
+
     void Start()
     {
         seeker = GetComponent<Seeker>();
         rb = GetComponent<Rigidbody2D>();
-        
 
-
-        // TRY TO FIND ROOM DATA AUTOMATICALLY
         if (!isInitialized)
         {
             RoomData roomData = GetComponentInParent<RoomData>();
             if (roomData != null)
             {
-                // RoomData will initialize us, but we need to wait for it
-                // So just log and let RoomData call SetRoomReferences
                 Debug.Log($"{gameObject.name} waiting for RoomData initialization...");
             }
             else
             {
-                // Fallback: try to find references manually
                 FindRoomReferences();
             }
         }
 
-        SetNextWanderTarget();
-        InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
-
-        hasBeenScared = false;  // Initialize
+        hasBeenScared = false;
 
         if (rb != null)
         {
@@ -97,25 +86,30 @@ public class ChildAI : MonoBehaviour
             Debug.Log($"Set tag for {gameObject.name} to LittleGirl");
         }
 
-        // EXISTING trigger collider (for detection)
+        // Keep existing trigger collider as-is
         CircleCollider2D triggerCol = GetComponent<CircleCollider2D>();
         if (triggerCol != null)
-        {
-            triggerCol.isTrigger = true;  // Keep this as trigger
-        }
+            triggerCol.isTrigger = true;
 
-        // ADD NEW: Physics collider for collision (not trigger)
+        // Add a small solid collider for physical separation
         CircleCollider2D physicsCol = gameObject.AddComponent<CircleCollider2D>();
-        physicsCol.radius = 0.4f;  // Same or slightly smaller than trigger
-        physicsCol.isTrigger = false;  // IMPORTANT: Not a trigger!
+        physicsCol.radius = 0.4f;
+        physicsCol.isTrigger = false;
 
-        // Layer setup (do this in Inspector or code)
-        gameObject.layer = LayerMask.NameToLayer("Child");
+        // Safe layer assignment — only set if the layer actually exists
+        int childLayer = LayerMask.NameToLayer("Child");
+        if (childLayer != -1)
+            gameObject.layer = childLayer;
+        else
+            Debug.LogWarning($"{gameObject.name}: 'Child' layer not found. Add it in Edit > Project Settings > Tags and Layers, or ignore this if you're not using layers.");
+
+        SetNextWanderTarget();
+        InvokeRepeating(nameof(UpdatePath), 0f, 0.5f);
     }
 
     void ApplySeparation()
     {
-        if (state == ChildState.Scared) return; // Scared children ignore separation
+        if (state == ChildState.Scared) return;
 
         Collider2D[] nearbyChildren = Physics2D.OverlapCircleAll(rb.position, separationRadius);
         Vector2 separation = Vector2.zero;
@@ -130,7 +124,6 @@ public class ChildAI : MonoBehaviour
 
                 if (distance < separationRadius && distance > 0.01f)
                 {
-                    // Stronger push when very close, weaker when just touching
                     float strength = 1f - (distance / separationRadius);
                     separation += awayFromChild.normalized * strength;
                     count++;
@@ -141,23 +134,21 @@ public class ChildAI : MonoBehaviour
         if (count > 0)
         {
             separation /= count;
-            // Apply gentle separation force (reduced from typical values)
             rb.AddForce(separation * separationForce * Time.deltaTime, ForceMode2D.Force);
         }
     }
 
     void Update()
     {
+        if (retargetCooldown > 0f)
+            retargetCooldown -= Time.deltaTime;
+
         switch (state)
         {
             case ChildState.Wander:
                 HandleIdle();
                 break;
-
-            case ChildState.Lured:
-                // Lured state - just follows target
-                break;
-
+            
             case ChildState.Scared:
                 CheckExitReached();
                 break;
@@ -181,7 +172,6 @@ public class ChildAI : MonoBehaviour
             StartIdle();
     }
 
-    // Pathfinding
     void UpdatePath()
     {
         if (isIdle || currentTarget == null) return;
@@ -198,14 +188,19 @@ public class ChildAI : MonoBehaviour
         }
     }
 
-    // Wander
     void SetNextWanderTarget()
     {
         if (hasBeenScared) return;
         if (wanderPoints == null || wanderPoints.Length == 0) return;
 
+        if (rb == null)
+        {
+            currentTarget = wanderPoints[Random.Range(0, wanderPoints.Length)];
+            return;
+        }
+
         // Find which points nearby children are already heading to
-        Collider2D[] nearby = Physics2D.OverlapCircleAll(rb.position, separationRadius * 3f);
+        Collider2D[] nearby = Physics2D.OverlapCircleAll(rb.position, separationRadius * 4f);
         List<Transform> takenPoints = new List<Transform>();
 
         foreach (Collider2D col in nearby)
@@ -218,15 +213,12 @@ public class ChildAI : MonoBehaviour
             }
         }
 
-        // Prefer points not already targeted
+        // Prefer points not already targeted by someone nearby
         List<Transform> freePoints = new List<Transform>();
         foreach (Transform point in wanderPoints)
-        {
             if (!takenPoints.Contains(point))
                 freePoints.Add(point);
-        }
 
-        // Pick from free points, fall back to any point if all taken
         List<Transform> pool = freePoints.Count > 0 ? freePoints : new List<Transform>(wanderPoints);
         currentTarget = pool[Random.Range(0, pool.Count)];
     }
@@ -244,30 +236,23 @@ public class ChildAI : MonoBehaviour
 
     void StartIdle()
     {
-        if (hasBeenScared) return;  // NEW: Don't idle if already scared
+        if (hasBeenScared) return;
         isIdle = true;
         idleTimer = idleTimeAtPoints;
         rb.linearVelocity = Vector2.zero;
     }
 
-    // Scare (called externally by scare objects like toilet, light, basin)
     public void Scare()
     {
-        if (hasBeenScared)          // NEW: Already scared, ignore
-        {
-            Debug.Log($"{gameObject.name} already scared, ignoring new scare");
-            return;
-        }
-
-        if (state == ChildState.Scared) return;     // Already scared, ignore
-        if (!isScareReady) return;                  // On cooldown
-
+        if (hasBeenScared) return;
+        if (state == ChildState.Scared) return;
+        if (!isScareReady) return;
         StartCoroutine(ScareRoutine());
     }
 
     IEnumerator ScareRoutine()
     {
-        hasBeenScared = true;                       // NEW: Mark as permanently scared
+        hasBeenScared = true;
         isScareReady = false;
         state = ChildState.Scared;
         isIdle = false;
@@ -276,16 +261,15 @@ public class ChildAI : MonoBehaviour
         if (exitPoint != null)
         {
             currentTarget = exitPoint;
-            Debug.Log($"{gameObject.name} was scared! Running to exit NOW!");
+            Debug.Log($"{gameObject.name} was scared! Running to exit!");
         }
         else
         {
-            Debug.LogError("Exit point not assigned! Child can't escape!");
+            Debug.LogError($"{gameObject.name}: Exit point not assigned!");
         }
 
-        OnChildScared?.Invoke();                    // Tell RoomManager a child was scared
+        OnChildScared?.Invoke();
 
-        // Wait for cooldown (optional, child is already scared permanently)
         yield return new WaitForSeconds(scareCooldown);
         isScareReady = true;
     }
@@ -297,15 +281,14 @@ public class ChildAI : MonoBehaviour
         {
             rb.linearVelocity = Vector2.zero;
             gameObject.SetActive(false);
-            Debug.Log($"{gameObject.name} escaped the bathroom! She's gone!");
+            Debug.Log($"{gameObject.name} escaped!");
         }
     }
 
-    // Lure (called externally by thrown object)
     public void Lure(Transform lureTarget)
     {
-        if (hasBeenScared) return;                 // NEW: Can't lure a scared child
-        if (state == ChildState.Scared) return;     // Can't lure a scared child
+        if (hasBeenScared) return;
+        if (state == ChildState.Scared) return;
         StartCoroutine(LureRoutine(lureTarget));
     }
 
@@ -317,80 +300,38 @@ public class ChildAI : MonoBehaviour
 
         yield return new WaitForSeconds(lureDuration);
 
-        if (state == ChildState.Lured && !hasBeenScared)  // Only return to wander if not scared
+        if (state == ChildState.Lured && !hasBeenScared)
         {
             state = ChildState.Wander;
             SetNextWanderTarget();
         }
     }
 
-    // Backwards compatibility
-    public void TriggerEscape(float speedMultiplier)
-    {
-        Scare();
-    }
+    public void TriggerEscape(float speedMultiplier) => Scare();
 
-    // Helpers
-    float GetCurrentSpeed()
-    {
-        return state == ChildState.Scared ? scaredSpeed : wanderSpeed;
-    }
+    float GetCurrentSpeed() => state == ChildState.Scared ? scaredSpeed : wanderSpeed;
 
-    // NEW: Public property to check if child is scared
-    public bool IsScared()
-    {
-        return hasBeenScared;
-    }
+    public bool IsScared() => hasBeenScared;
 
-    void OnDrawGizmosSelected()
-    {
-        // Draw exit point connection
-        if (exitPoint != null)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawLine(transform.position, exitPoint.position);
-            Gizmos.DrawWireSphere(exitPoint.position, 0.5f);
-        }
-
-        // Draw wander points
-        if (wanderPoints != null)
-        {
-            Gizmos.color = Color.blue;
-            foreach (Transform point in wanderPoints)
-            {
-                if (point != null)
-                    Gizmos.DrawWireSphere(point.position, 0.3f);
-            }
-        }
-    }
-
-    // Add this method to receive room references
     public void SetRoomReferences(Transform[] roomWanderPoints, Transform roomExitPoint)
     {
-        // Only set if not already initialized or if forced
         if (!isInitialized)
         {
             wanderPoints = roomWanderPoints;
             exitPoint = roomExitPoint;
             isInitialized = true;
 
-            // Re-initialize wander target
             if (state == ChildState.Wander && !hasBeenScared)
-            {
                 SetNextWanderTarget();
-            }
         }
     }
 
-    // Enhanced FindRoomReferences for multiple children
-void FindRoomReferences()
+    void FindRoomReferences()
     {
-        // Try parent first
         Transform currentParent = transform.parent;
 
         while (currentParent != null)
         {
-            // Check if parent has RoomData
             RoomData roomData = currentParent.GetComponent<RoomData>();
             if (roomData != null)
             {
@@ -398,15 +339,12 @@ void FindRoomReferences()
                 return;
             }
 
-            // Look for WanderPoints and ExitPoint as children of parent
             Transform wanderParent = currentParent.Find("WanderPoints");
             if (wanderParent != null && (wanderPoints == null || wanderPoints.Length == 0))
             {
                 List<Transform> points = new List<Transform>();
                 foreach (Transform child in wanderParent)
-                {
                     points.Add(child);
-                }
                 wanderPoints = points.ToArray();
             }
 
@@ -417,7 +355,6 @@ void FindRoomReferences()
                     exitPoint = roomExit;
             }
 
-            // If we found both, we're done
             if (wanderPoints != null && wanderPoints.Length > 0 && exitPoint != null)
             {
                 isInitialized = true;
@@ -427,7 +364,6 @@ void FindRoomReferences()
             currentParent = currentParent.parent;
         }
 
-        // Last resort: search by tag
         if (wanderPoints == null || wanderPoints.Length == 0)
         {
             GameObject[] wanderPointObjects = GameObject.FindGameObjectsWithTag("WanderPoint");
@@ -439,51 +375,81 @@ void FindRoomReferences()
             }
         }
     }
-   void OnCollisionStay2D(Collision2D collision)
+
+    void OnCollisionStay2D(Collision2D collision)
     {
-        // If stuck against another child
-        if (collision.gameObject.CompareTag("LittleGirl") && !isIdle && state != ChildState.Scared)
-        {
-            // Calculate separation force (push away from other child)
-            Vector2 awayFromOther = (rb.position - (Vector2)collision.transform.position).normalized;
+        if (!collision.gameObject.CompareTag("LittleGirl") || isIdle || state == ChildState.Scared) return;
 
-            // MUCH SMALLER force - using 0.15f instead of 0.5f
-            float separationForce = GetCurrentSpeed() * 0.05f * Time.deltaTime;
-            rb.AddForce(awayFromOther * separationForce, ForceMode2D.Force);
+        Vector2 awayFromOther = (rb.position - (Vector2)collision.transform.position).normalized;
+        float force = GetCurrentSpeed() * 0.02f * Time.deltaTime;
+        rb.AddForce(awayFromOther * force, ForceMode2D.Force);
 
-            // Only check if stuck occasionally (every 60 frames instead of 30)
-            if (Time.frameCount % 60 == 0)
-            {
-                CheckIfStuck();
-            }
-        }
+        if (Time.frameCount % 60 == 0)
+            CheckIfStuck();
     }
 
     void OnCollisionEnter2D(Collision2D collision)
     {
-        // Initial separation push when they first touch
-        if (collision.gameObject.CompareTag("LittleGirl") && !isIdle)
+        if (!collision.gameObject.CompareTag("LittleGirl") || isIdle || hasBeenScared) return;
+
+        // Push apart
+        Vector2 awayFromOther = (rb.position - (Vector2)collision.transform.position).normalized;
+        rb.AddForce(awayFromOther * wanderSpeed * 0.03f, ForceMode2D.Impulse);
+
+        // Pick a new target — but only if cooldown has expired so we don't spam this
+        if (retargetCooldown <= 0f)
         {
-            Vector2 awayFromOther = (rb.position - (Vector2)collision.transform.position).normalized;
-            // Gentle initial push
-            rb.AddForce(awayFromOther * wanderSpeed * 0.03f, ForceMode2D.Impulse);
+            SetNextWanderTarget();
+            retargetCooldown = 1f; // Wait 1 second before retargeting again
         }
     }
+
     void CheckIfStuck()
     {
-        // If velocity is near zero but should be moving
         if (rb.linearVelocity.magnitude < 0.1f && state != ChildState.Scared && !isIdle)
         {
-            // Force recalculate path
             if (currentTarget != null && seeker.IsDone())
-            {
                 seeker.StartPath(rb.position, currentTarget.position, OnPathComplete);
-            }
 
-            // Add random force to break deadlock
             Vector2 randomForce = Random.insideUnitCircle * wanderSpeed * 0.3f;
             rb.AddForce(randomForce, ForceMode2D.Impulse);
         }
     }
 
+    void OnDrawGizmosSelected()
+    {
+        // Dotted trail to current target
+        if (currentTarget != null)
+        {
+            Gizmos.color = state == ChildState.Scared ? Color.red : Color.cyan;
+            Vector3 start = transform.position;
+            Vector3 end = currentTarget.position;
+            float totalDist = Vector3.Distance(start, end);
+            int dotCount = Mathf.FloorToInt(totalDist / 0.3f);
+
+            for (int i = 0; i <= dotCount; i++)
+            {
+                float t = dotCount == 0 ? 0 : (float)i / dotCount;
+                Gizmos.DrawSphere(Vector3.Lerp(start, end, t), 0.08f);
+            }
+
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(end, 0.25f);
+        }
+
+        if (exitPoint != null)
+        {
+            Gizmos.color = Color.green;
+            Gizmos.DrawLine(transform.position, exitPoint.position);
+            Gizmos.DrawWireSphere(exitPoint.position, 0.5f);
+        }
+
+        if (wanderPoints != null)
+        {
+            Gizmos.color = Color.blue;
+            foreach (Transform point in wanderPoints)
+                if (point != null)
+                    Gizmos.DrawWireSphere(point.position, 0.3f);
+        }
+    }
 }
