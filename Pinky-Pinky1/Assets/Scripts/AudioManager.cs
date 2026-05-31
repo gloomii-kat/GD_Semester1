@@ -19,6 +19,7 @@ public class AudioManager : MonoBehaviour
     public AudioClip EvilLaugh;
     public AudioClip ClockTick;
     public AudioClip ClockAlarm;
+    public AudioClip LockerAudio;
 
     [Header("Chase Music")]
     public AudioClip chaseMusic;

@@ -7,7 +7,7 @@ public class HideSpot : MonoBehaviour
     public bool autoUnhideOnExit = true;
 
     [Header("Timer Settings")]
-    public float maxHideTime = 10f; // Maximum time player can hide here (set to 0 for no limit)
+    public float maxHideTime = 5f; // Maximum time player can hide here (set to 0 for no limit)
     public bool kickPlayerOut = true; // Should player be kicked out after time?
     public bool showTimerWarning = true;
 

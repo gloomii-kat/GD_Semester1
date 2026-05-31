@@ -1,5 +1,4 @@
- using UnityEngine;
-using UnityEngine.UI;
+using UnityEngine;
 using System.Collections;
 
 public class LightFlicker : MonoBehaviour
@@ -21,31 +20,43 @@ public class LightFlicker : MonoBehaviour
     public float maxFlickerInterval = 0.25f;
 
     [Header("Child Reference")]
-    public GameObject childObject; // Reference to the Child AI GameObject
-    public float escapeSpeedMultiplier = 2f; // How fast the child runs away
+    public GameObject childObject;
 
     [Header("Audio")]
     private AudioManager AudioManager;
 
     private bool isYellowActive = true;
     private bool playerInRange = false;
-    private bool littleGirlInRange = false;
+    private bool childInRange = false;
     private bool isScaring = false;
 
     private void Awake()
     {
         AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
+
     }
 
     void Start()
     {
         if (interactionText != null)
             interactionText.gameObject.SetActive(false);
+
+        if (childObject == null)
+        {
+            FindChildByTag();
+        }
     }
 
     void Update()
     {
-        bool bothInRange = playerInRange && littleGirlInRange;
+        if (childObject == null)
+        {
+            FindChildByTag();
+            return;
+        }
+
+
+        bool bothInRange = playerInRange && childInRange;
 
         // Show interaction text if both are in range and not scaring
         if (interactionText != null)
@@ -60,16 +71,33 @@ public class LightFlicker : MonoBehaviour
         }
     }
 
+    void FindChildByTag()
+    {
+        GameObject found = GameObject.FindGameObjectWithTag("LittleGirl");
+        if (found != null)
+        {
+            childObject = found;
+            Debug.Log($"LightFlicker found child: {childObject.name}");
+        }
+    }
+
     IEnumerator FlickerScare()
     {
+        if (childObject == null)
+        {
+            Debug.LogError("LightFlicker: childObject is null!");
+            yield break;
+        }
+
         isScaring = true;
+
 
         // Hide interaction text immediately
         if (interactionText != null)
             interactionText.gameObject.SetActive(false);
 
-        // Make the child run away IMMEDIATELY
-        TriggerChildEscape();
+        // Scare the child
+        ScareChild();
 
         // Play sound
         if (AudioManager != null)
@@ -99,14 +127,14 @@ public class LightFlicker : MonoBehaviour
         isScaring = false;
     }
 
-    void TriggerChildEscape()
+    void ScareChild()
     {
         if (childObject != null)
         {
             ChildAI childAI = childObject.GetComponent<ChildAI>();
             if (childAI != null)
             {
-                childAI.TriggerEscape(escapeSpeedMultiplier);
+                childAI.Scare();
                 Debug.Log("Light flicker scared the child! Child is now escaping!");
             }
             else
@@ -137,8 +165,12 @@ public class LightFlicker : MonoBehaviour
         }
         if (other.CompareTag("LittleGirl"))
         {
-            littleGirlInRange = true;
-            Debug.Log("Little girl entered light trigger zone");
+            childInRange = true;
+            if (childObject == null || childObject != other.gameObject)
+            {
+                childObject = other.gameObject;
+            }
+            Debug.Log("Child entered light trigger zone");
         }
     }
 
@@ -152,13 +184,16 @@ public class LightFlicker : MonoBehaviour
         }
         if (other.CompareTag("LittleGirl"))
         {
-            littleGirlInRange = false;
+            childInRange = false;
         }
     }
 
-    public void TriggerFlickerScare()
+
+
+    void OnDrawGizmos()
     {
-        if (!isScaring && playerInRange && littleGirlInRange)
-            StartCoroutine(FlickerScare());
+        // Draw a small sphere to show trigger status
+        Gizmos.color = (playerInRange && childInRange) ? Color.green : Color.red;
+        Gizmos.DrawSphere(transform.position + Vector3.up, 0.3f);
     }
 }

@@ -1,8 +1,8 @@
 using UnityEngine;
 
-public class BasinScare : MonoBehaviour
+public class LockerScare : MonoBehaviour
 {
-    public GameObject basinText;       // "Press E" prompt
+    public GameObject LockerText;       // "Press E" prompt
     private AudioManager AudioManager;
 
     [Header("Child Reference")]
@@ -15,14 +15,12 @@ public class BasinScare : MonoBehaviour
     private void Awake()
     {
         AudioManager = GameObject.FindGameObjectWithTag("Audio").GetComponent<AudioManager>();
-
-        
     }
 
     void Start()
     {
-        if (basinText != null)
-            basinText.SetActive(false);
+        if (LockerText != null)
+            LockerText.SetActive(false);
 
         if (childObject == null)
         {
@@ -32,18 +30,17 @@ public class BasinScare : MonoBehaviour
 
     void Update()
     {
-        // Periodically try to find child if still null
         if (childObject == null)
         {
             FindChildByTag();
-            return; // Exit Update until we find a child
+            return;
         }
 
         bool bothInRange = playerInRange && childInRange;
 
-        if (basinText != null)
+        if (LockerText != null)
         {
-            basinText.SetActive(bothInRange && !isScaring);
+           LockerText.SetActive(bothInRange && !isScaring);
         }
 
         if (bothInRange && Input.GetKeyDown(KeyCode.E) && !isScaring)
@@ -58,11 +55,7 @@ public class BasinScare : MonoBehaviour
         if (found != null)
         {
             childObject = found;
-            Debug.Log($"BasinScare found child: {childObject.name}");
-        }
-        else
-        {
-            Debug.LogWarning("BasinScare: No GameObject with tag 'LittleGirl' found!");
+            Debug.Log($"ToiletScare found child: {childObject.name}");
         }
     }
 
@@ -70,38 +63,36 @@ public class BasinScare : MonoBehaviour
     {
         if (childObject == null)
         {
-            Debug.LogError("BasinScare: childObject is null in StartScare!");
-            FindChildByTag();
-            if (childObject == null)
-            {
-                ResetScare();
-                return;
-            }
+            Debug.LogError("ToiletScare: childObject is null!");
+            ResetScare();
+            return;
         }
 
         isScaring = true;
 
-        if (basinText != null)
-            basinText.SetActive(false);
+        if (LockerText != null)
+            LockerText.SetActive(false);
 
         ChildAI childAI = childObject.GetComponent<ChildAI>();
         if (childAI != null)
         {
             childAI.Scare();
-            Debug.Log("Basin scared the child!");
+            Debug.Log("Toilet scared the child!");
         }
         else
         {
-            Debug.LogError("BasinScare: ChildAI component not found on childObject!");
+            Debug.LogError("ToiletScare: ChildAI component not found!");
         }
 
         if (AudioManager != null)
         {
-            AudioManager.PlaySFX(AudioManager.RunningWater);
+            AudioManager.PlaySFX(AudioManager.LockerAudio);
         }
 
         Invoke(nameof(ResetScare), 1f);
     }
+
+
 
     void ResetScare()
     {
@@ -113,15 +104,14 @@ public class BasinScare : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerInRange = true;
+            Debug.Log("Player entered toilet trigger zone");
         }
         if (other.CompareTag("LittleGirl"))
         {
             childInRange = true;
-            // Update childObject reference when child enters trigger
             if (childObject == null || childObject != other.gameObject)
             {
                 childObject = other.gameObject;
-                Debug.Log($"BasinScare: Child entered trigger - {childObject.name}");
             }
         }
     }
@@ -131,8 +121,8 @@ public class BasinScare : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             playerInRange = false;
-            if (basinText != null)
-                basinText.SetActive(false);
+            if (LockerText != null)
+                LockerText.SetActive(false);
         }
         if (other.CompareTag("LittleGirl"))
         {

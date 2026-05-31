@@ -1,29 +1,38 @@
 using UnityEngine;
 using System.Collections;
-using UnityEngine.SceneManagement; // Add this for scene loading
+using UnityEngine.SceneManagement;
 
-public class TeacherAI : MonoBehaviour
+public class ScarePatrolTeacher : MonoBehaviour
 {
     [Header("Patrol Settings")]
-    public Transform[] patrolPoints;      // Points in a loop around the bathroom
+    public Transform[] patrolPoints;
     public float patrolSpeed = 2f;
-    public float waitTimeAtPoints = 1f;   // Pause at each patrol point
+    public float waitTimeAtPoints = 1f;
 
-    [Header("Chase Settings")]
+    [Header("Scare Response")]
+    public float searchDuration = 5f;        // Time to search when 1 child is scared
+    public float searchSpeed = 2.5f;
+
+    [Header("Chase Settings (2+ scared children)")]
     public Transform playerTarget;
     public float chaseSpeed = 4f;
     public float chaseRange = 8f;
     public float loseSightRange = 12f;
 
+    [Header("Scare Detection")]
+    public float scareDetectionRadius = 10f;
+    private int scaredChildrenCount = 0;
+
     [Header("Chase Delay")]
-    public float initialChaseDelay = 2f;  // Delay before teacher can chase after spawn
+    public float initialChaseDelay = 2f;
     private float chaseDelayTimer = 0f;
     private bool canChase = false;
 
     [Header("References")]
+    public NightManager nightManager;
     public GameObject gotchaText;
-    public string gameOverSceneName = "GameOver"; // Add scene name for game over
-    public int gameOverSceneIndex = -1; // Alternative: use scene index (set to -1 to use name instead)
+    public string gameOverSceneName = "GameOver";
+    public int gameOverSceneIndex = -1;
 
     private AudioManager audioManager;
     private Rigidbody2D rb;
@@ -38,13 +47,13 @@ public class TeacherAI : MonoBehaviour
     private enum TeacherState
     {
         Patrol,
-        Chase,
-        Search
+        Search,
+        Chase
     }
 
     private TeacherState currentState;
     private float searchTimer;
-    private Vector3 lastKnownPlayerPosition;
+    private Vector3 searchLocation;
     private bool hasCaughtPlayer = false;
 
     void Awake()
@@ -66,18 +75,17 @@ public class TeacherAI : MonoBehaviour
         currentState = TeacherState.Patrol;
         currentSpeed = patrolSpeed;
         hasCaughtPlayer = false;
+        scaredChildrenCount = 0;
 
-        // Start patrol from first point
         if (patrolPoints != null && patrolPoints.Length > 0)
         {
             currentPatrolIndex = 0;
         }
 
-        // Start chase delay timer
         chaseDelayTimer = initialChaseDelay;
         canChase = false;
 
-        Debug.Log("Teacher activated - PATROLLING");
+        Debug.Log("Scare Patrol Teacher activated - NORMAL PATROL");
     }
 
     void OnDisable()
@@ -87,41 +95,79 @@ public class TeacherAI : MonoBehaviour
 
     void Update()
     {
-        // Update chase delay timer
         if (!canChase)
         {
             chaseDelayTimer -= Time.deltaTime;
             if (chaseDelayTimer <= 0f)
             {
                 canChase = true;
-                Debug.Log("Teacher can now chase!");
+                Debug.Log("Scare Teacher can now chase!");
             }
         }
+
+        CheckForScaredChildren();
 
         switch (currentState)
         {
             case TeacherState.Patrol:
                 UpdatePatrolState();
                 break;
-            case TeacherState.Chase:
-                UpdateChaseState();
-                break;
             case TeacherState.Search:
                 UpdateSearchState();
                 break;
+            case TeacherState.Chase:
+                UpdateChaseState();
+                break;
+        }
+    }
+
+    void CheckForScaredChildren()
+    {
+        Collider2D[] children = Physics2D.OverlapCircleAll(transform.position, scareDetectionRadius);
+        int scaredCount = 0;
+        Vector3 scaredPositionSum = Vector3.zero;
+
+        foreach (Collider2D child in children)
+        {
+            if (child.CompareTag("Child") && child.GetComponent<ChildAI>() != null)
+            {
+                ChildAI childAI = child.GetComponent<ChildAI>();
+                if (childAI.IsScared())
+                {
+                    scaredCount++;
+                    scaredPositionSum += child.transform.position;
+                }
+            }
+        }
+
+        int previousScaredCount = scaredChildrenCount;
+        scaredChildrenCount = scaredCount;
+
+        // React to changes in scared children count
+        if (canChase)
+        {
+            if (scaredChildrenCount >= 2 && currentState != TeacherState.Chase)
+            {
+                // Two or more scared children - CHASE!
+                TransitionToChase();
+            }
+            else if (scaredChildrenCount == 1 && currentState == TeacherState.Patrol)
+            {
+                // One scared child - SEARCH
+                Vector3 averageScaredPosition = scaredPositionSum / scaredCount;
+                TransitionToSearch(averageScaredPosition);
+            }
+            else if (scaredChildrenCount == 0 && currentState == TeacherState.Search)
+            {
+                // No scared children anymore - return to patrol
+                TransitionToPatrol();
+            }
         }
     }
 
     void UpdatePatrolState()
     {
-        // Check for player (only if can chase)
-        if (canChase && IsPlayerInChaseRange())
-        {
-            TransitionToChase();
-            return;
-        }
-
-        // Handle waiting at patrol points
+        // Normal patrol behavior
         if (isWaiting)
         {
             waitTimer -= Time.deltaTime;
@@ -137,42 +183,17 @@ public class TeacherAI : MonoBehaviour
             }
         }
 
-        // Move to current patrol point
         if (patrolPoints != null && patrolPoints.Length > 0)
         {
             MoveTowardsTarget(patrolPoints[currentPatrolIndex].position, patrolSpeed);
 
-            // Check if reached patrol point
             float distanceToPoint = Vector2.Distance(transform.position, patrolPoints[currentPatrolIndex].position);
             if (distanceToPoint < 0.3f)
             {
-                // Arrived at point, start waiting
                 isWaiting = true;
                 waitTimer = waitTimeAtPoints;
-                Debug.Log($"Teacher reached patrol point {currentPatrolIndex}, waiting {waitTimeAtPoints}s");
+                Debug.Log($"Scare Teacher reached patrol point {currentPatrolIndex}");
             }
-        }
-    }
-
-    void UpdateChaseState()
-    {
-        // Check if caught player (handled by trigger collider)
-
-        // Check if player is still in chase range
-        if (IsPlayerInChaseRange())
-        {
-            lastKnownPlayerPosition = playerTarget.position;
-            MoveTowardsTarget(playerTarget.position, chaseSpeed);
-        }
-        else if (IsPlayerInLoseRange())
-        {
-            // Lost player but still in lose range - search
-            TransitionToSearch();
-        }
-        else
-        {
-            // Player completely out of range - return to patrol
-            TransitionToPatrol();
         }
     }
 
@@ -180,26 +201,39 @@ public class TeacherAI : MonoBehaviour
     {
         searchTimer -= Time.deltaTime;
 
-        // Move to last known player position
-        MoveTowardsTarget(lastKnownPlayerPosition, chaseSpeed * 0.7f);
+        // Move to search location
+        MoveTowardsTarget(searchLocation, searchSpeed);
 
-        // Check if reached search location
-        float distanceToSearchPoint = Vector2.Distance(transform.position, lastKnownPlayerPosition);
+        float distanceToSearchPoint = Vector2.Distance(transform.position, searchLocation);
         if (distanceToSearchPoint < 1f)
         {
             rb.linearVelocity = Vector2.zero;
+            // Look around at search point
+            Debug.Log("Scare Teacher: Searching area...");
         }
 
-        // Search timer expired - go back to patrol
         if (searchTimer <= 0f)
         {
+            // Search time expired, go back to patrol
             TransitionToPatrol();
         }
+    }
 
-        // If player is spotted during search, chase again
-        if (canChase && IsPlayerInChaseRange())
+    void UpdateChaseState()
+    {
+        if (IsPlayerInChaseRange())
         {
-            TransitionToChase();
+            MoveTowardsTarget(playerTarget.position, chaseSpeed);
+        }
+        else if (IsPlayerInLoseRange())
+        {
+            // Lost player but still in range - keep chasing a bit
+            MoveTowardsTarget(playerTarget.position, chaseSpeed);
+        }
+        else
+        {
+            // Player completely out of range - return to patrol
+            TransitionToPatrol();
         }
     }
 
@@ -212,25 +246,45 @@ public class TeacherAI : MonoBehaviour
     void MoveToNextPatrolPoint()
     {
         if (patrolPoints == null || patrolPoints.Length == 0) return;
-
-        // Move to next patrol point (loop back to start)
         currentPatrolIndex = (currentPatrolIndex + 1) % patrolPoints.Length;
-        Debug.Log($"Teacher moving to patrol point {currentPatrolIndex}");
     }
 
     void TransitionToPatrol()
     {
         currentState = TeacherState.Patrol;
         currentSpeed = patrolSpeed;
-
-        // Find nearest patrol point to resume from
         FindNearestPatrolPoint();
 
-        Debug.Log("Teacher: Returned to PATROL");
+        Debug.Log("Scare Teacher: Returned to PATROL");
 
         if (audioManager != null)
         {
             audioManager.RestoreBackgroundMusic();
+        }
+    }
+
+    void TransitionToSearch(Vector3 position)
+    {
+        if (currentState == TeacherState.Chase) return; // Don't interrupt chase
+
+        currentState = TeacherState.Search;
+        searchLocation = position;
+        searchTimer = searchDuration;
+        Debug.Log($"Scare Teacher: SEARCHING at {position} for {searchDuration}s (1 child scared)");
+    }
+
+    void TransitionToChase()
+    {
+        if (currentState == TeacherState.Chase) return;
+        if (!canChase) return;
+
+        currentState = TeacherState.Chase;
+        currentSpeed = chaseSpeed;
+        Debug.Log("Scare Teacher: CHASE - Multiple scared children detected!");
+
+        if (audioManager != null)
+        {
+            audioManager.PlayChaseMusic();
         }
     }
 
@@ -252,32 +306,7 @@ public class TeacherAI : MonoBehaviour
         }
 
         currentPatrolIndex = closestIndex;
-        isWaiting = false; // Don't wait, start moving immediately
-        Debug.Log($"Teacher resuming patrol from nearest point {currentPatrolIndex}");
-    }
-
-    void TransitionToChase()
-    {
-        if (currentState == TeacherState.Chase) return;
-        if (!canChase) return;
-
-        currentState = TeacherState.Chase;
-        currentSpeed = chaseSpeed;
-
-        Debug.Log("Teacher: CHASE - Spotted Pinky!");
-
-        if (audioManager != null)
-        {
-            audioManager.PlayChaseMusic();
-        }
-    }
-
-    void TransitionToSearch()
-    {
-        currentState = TeacherState.Search;
-        searchTimer = 3f; // Search for 3 seconds
-        lastKnownPlayerPosition = playerTarget.position;
-        Debug.Log("Teacher: SEARCH - Lost Pinky");
+        isWaiting = false;
     }
 
     bool IsPlayerInChaseRange()
@@ -292,7 +321,6 @@ public class TeacherAI : MonoBehaviour
         return Vector2.Distance(transform.position, playerTarget.position) < loseSightRange;
     }
 
-    // TRIGGER COLLIDER FOR CATCHING
     void OnTriggerEnter2D(Collider2D other)
     {
         if (hasCaughtPlayer) return;
@@ -307,44 +335,36 @@ public class TeacherAI : MonoBehaviour
     {
         hasCaughtPlayer = true;
         rb.linearVelocity = Vector2.zero;
+        Debug.Log("SCARE TEACHER CAUGHT PINKY!");
 
-        Debug.Log("TEACHER CAUGHT PINKY!");
-
-        // Show gotcha text
         if (gotchaText != null)
         {
             gotchaText.SetActive(true);
             StartCoroutine(HideGotchaTextAfterDelay(2f));
         }
 
-        // Play caught sound
         if (audioManager != null)
         {
             audioManager.PlaySFX(audioManager.DoorBanging);
         }
 
-        // Load Game Over scene instead of completing night
         LoadGameOverScene();
-
-        // Disable the teacher (or handle game over)
         StartCoroutine(DisableAfterDelay(2f));
     }
 
     void LoadGameOverScene()
     {
-        // Method 1: Load by scene name
         if (!string.IsNullOrEmpty(gameOverSceneName))
         {
             SceneManager.LoadScene(gameOverSceneName);
         }
-        // Method 2: Load by scene index (if set to a valid index)
         else if (gameOverSceneIndex >= 0 && gameOverSceneIndex < SceneManager.sceneCountInBuildSettings)
         {
             SceneManager.LoadScene(gameOverSceneIndex);
         }
         else
         {
-            Debug.LogError("Game Over scene not configured! Please set gameOverSceneName or gameOverSceneIndex in the Inspector.");
+            Debug.LogError("Game Over scene not configured!");
         }
     }
 
@@ -363,7 +383,6 @@ public class TeacherAI : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        // Draw patrol points
         if (patrolPoints != null)
         {
             Gizmos.color = Color.blue;
@@ -372,15 +391,15 @@ public class TeacherAI : MonoBehaviour
                 if (point != null)
                 {
                     Gizmos.DrawWireSphere(point.position, 0.3f);
-                    Gizmos.DrawLine(transform.position, point.position);
                 }
             }
         }
 
-        // Draw chase ranges
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, chaseRange);
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, loseSightRange);
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, scareDetectionRadius);
     }
 }
